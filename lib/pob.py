@@ -325,7 +325,11 @@ def _parse_item_text(slot: str, raw: str) -> Item:
 def _active_child(parent: ET.Element, child_tag: str, id_attr: str,
                   override_id: str | None = None) -> ET.Element | None:
     """Return the child whose `id` matches parent's activeX attribute, or
-    `override_id` when provided (used to force a specific variant)."""
+    `override_id` when provided (used to force a specific variant).
+
+    PoB sometimes omits `id` attributes on `<Spec>` (passive tree) elements
+    and uses 1-based positional indexing via `activeSpec`. When none of the
+    candidates have an `id`, we interpret target_id as that 1-based index."""
     candidates = parent.findall(child_tag)
     if not candidates:
         return None
@@ -334,6 +338,14 @@ def _active_child(parent: ET.Element, child_tag: str, id_attr: str,
         for c in candidates:
             if c.get("id") == target_id:
                 return c
+        # Fallback: positional. activeSpec="5" -> candidates[4].
+        if all(c.get("id") is None for c in candidates):
+            try:
+                idx = int(target_id) - 1
+                if 0 <= idx < len(candidates):
+                    return candidates[idx]
+            except (TypeError, ValueError):
+                pass
     return candidates[0]
 
 
@@ -358,10 +370,19 @@ def _title_for(el: ET.Element, fallback_prefix: str, idx: int) -> str:
     return f"{fallback_prefix} {idx + 1}"
 
 
+def _normalize_title(s: str | None) -> str:
+    return (s or "").strip().lower()
+
+
 def list_variants(root: ET.Element) -> list[VariantSpec]:
-    """Enumerate variant triples present in the PoB XML. Always returns at
-    least one variant (the active one) so callers can treat single-variant
-    builds uniformly."""
+    """Enumerate variant triples (ItemSet × SkillSet × TreeSpec) present in
+    the PoB XML. Pairs siblings by **title** first (PoB users typically give
+    matching variants the same title across sets), falling back to positional
+    index for unnamed entries. Always returns at least one variant.
+
+    Tree `<Spec>` elements may have no `id` attribute (PoB-PoE2 indexes them
+    positionally via `activeSpec="N"`); we synthesise a 1-based string id in
+    that case so the downstream encoder can rewrite the active attr."""
     items_el = root.find("Items")
     skills_el = root.find("Skills")
     tree_el = root.find("Tree")
@@ -374,36 +395,88 @@ def list_variants(root: ET.Element) -> list[VariantSpec]:
         return [VariantSpec(id="0", label="Default", item_set_id="",
                             skill_set_id="", tree_spec_id="")]
 
-    # Anchor on the longest list — almost always ItemSets — and pair siblings
-    # by index, falling back to the active/first of the other lists.
-    n = max(len(item_sets), len(skill_sets), len(tree_specs), 1)
+    # Title indexes for cross-set matching. PoB conventions: when users author
+    # multiple variants they apply the same title to ItemSet/SkillSet/Spec
+    # ("End Game (Cheap)" appears in all three blocks). Pairing by id is
+    # unreliable because PoB allocates ids in author-creation order, which
+    # diverges across blocks.
+    sk_by_title: dict[str, ET.Element] = {}
+    sk_used: set[int] = set()
+    for s in skill_sets:
+        t = _normalize_title(s.get("title"))
+        if t and t not in sk_by_title:
+            sk_by_title[t] = s
+    tr_by_title: dict[str, ET.Element] = {}
+    tr_used: set[int] = set()
+    for s in tree_specs:
+        t = _normalize_title(s.get("title"))
+        if t and t not in tr_by_title:
+            tr_by_title[t] = s
 
-    def _pick(lst: list[ET.Element], i: int) -> ET.Element | None:
-        if not lst:
-            return None
-        return lst[i] if i < len(lst) else lst[0]
+    def _spec_id(el: ET.Element | None, lst: list[ET.Element]) -> str:
+        """Return the element's id, or its 1-based positional index for
+        id-less Specs (which PoB references via activeSpec="N")."""
+        if el is None:
+            return ""
+        eid = el.get("id")
+        if eid:
+            return eid
+        try:
+            return str(lst.index(el) + 1)
+        except ValueError:
+            return ""
+
+    # Anchor on whichever list is longest; usually ItemSets.
+    anchor = item_sets if len(item_sets) >= max(len(skill_sets), len(tree_specs)) \
+             else (skill_sets if len(skill_sets) >= len(tree_specs) else tree_specs)
+    anchor_kind = ("Items" if anchor is item_sets else
+                   "Skills" if anchor is skill_sets else "Tree")
 
     variants: list[VariantSpec] = []
-    for i in range(n):
-        it = _pick(item_sets, i)
-        sk = _pick(skill_sets, i)
-        tr = _pick(tree_specs, i)
-        # Prefer the item-set label (most authors name those), then skill set, then spec.
-        label = ""
-        for el, prefix in ((it, "Items"), (sk, "Skills"), (tr, "Tree")):
-            if el is not None:
-                cand = _title_for(el, prefix, i)
-                if not cand.startswith(("Items ", "Skills ", "Tree ")):
-                    label = cand
-                    break
-        if not label:
-            label = f"Variant {i + 1}"
+    for i, a in enumerate(anchor):
+        title = _normalize_title(a.get("title"))
+        # ItemSet anchor: match SkillSet/Spec by title; fall back to position.
+        if anchor is item_sets:
+            it = a
+            sk = sk_by_title.get(title)
+            tr = tr_by_title.get(title)
+        elif anchor is skill_sets:
+            sk = a
+            it = next((x for x in item_sets if _normalize_title(x.get("title")) == title), None)
+            tr = tr_by_title.get(title)
+        else:
+            tr = a
+            it = next((x for x in item_sets if _normalize_title(x.get("title")) == title), None)
+            sk = sk_by_title.get(title)
+
+        # Positional fallback for any unmatched slot — but only with an
+        # un-claimed sibling, so two anchor rows can't both grab the same
+        # other-block entry.
+        if sk is None and i < len(skill_sets) and i not in sk_used:
+            sk = skill_sets[i]; sk_used.add(i)
+        elif sk is not None:
+            try: sk_used.add(skill_sets.index(sk))
+            except ValueError: pass
+        if tr is None and i < len(tree_specs) and i not in tr_used:
+            tr = tree_specs[i]; tr_used.add(i)
+        elif tr is not None:
+            try: tr_used.add(tree_specs.index(tr))
+            except ValueError: pass
+
+        display = title or _normalize_title(
+            (sk.get("title") if sk is not None else "") or
+            (tr.get("title") if tr is not None else "")
+        )
+        label = a.get("title") or (sk.get("title") if sk is not None else "") \
+                or (tr.get("title") if tr is not None else "") \
+                or f"Variant {i + 1}"
+
         variants.append(VariantSpec(
             id=(it.get("id") if it is not None else str(i + 1)) or str(i + 1),
             label=label,
             item_set_id=(it.get("id") if it is not None else ""),
             skill_set_id=(sk.get("id") if sk is not None else ""),
-            tree_spec_id=(tr.get("id") if tr is not None else ""),
+            tree_spec_id=_spec_id(tr, tree_specs),
         ))
     return variants
 
