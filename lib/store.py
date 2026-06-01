@@ -61,6 +61,25 @@ class StoredSkill:
 
 
 @dataclass
+class BuildVariant:
+    """One PoB variant attached to a Build. Carries its own items/tree/skills/
+    main_skill + poe.ninja link. The Build's flat `items`/`tree`/`skills`/
+    `main_skill` fields mirror whichever variant is currently active, so every
+    existing endpoint keeps working without per-variant awareness."""
+    id: str                 # short, build-local id (e.g. "v1")
+    label: str
+    item_set_id: str = ""   # PoB ItemSet id this variant was sourced from
+    skill_set_id: str = ""  # PoB SkillSet id
+    tree_spec_id: str = ""  # PoB Spec id
+    main_skill: str = ""
+    items: dict[str, StoredItem] = field(default_factory=dict)
+    tree: StoredTree = field(default_factory=StoredTree)
+    skills: list[StoredSkill] = field(default_factory=list)
+    tree_viewer_url: str = ""
+    notes: str = ""
+
+
+@dataclass
 class Build:
     id: str
     label: str
@@ -87,6 +106,11 @@ class Build:
     # Free-form links attached to the build (guides, variants, wiki, etc.).
     # Each entry: {id, url, title, added_at}.
     links: list[dict] = field(default_factory=list)
+    # PoB build variants (MoM/CI/budget/etc.). When non-empty, the flat fields
+    # above mirror build_variants[active]. Single-variant builds may leave this
+    # empty — load() will synthesize one on read for uniform UI handling.
+    build_variants: list[BuildVariant] = field(default_factory=list)
+    active_build_variant_id: str = ""
 
 
 @dataclass
@@ -182,6 +206,19 @@ def _dict_to_dc(dc_type, data: dict) -> Any:
     return dc_type(**{k: v for k, v in data.items() if k in field_names})
 
 
+def _variant_from_dict(d: dict) -> BuildVariant:
+    items = {slot: _dict_to_dc(StoredItem, iv)
+             for slot, iv in (d.get("items") or {}).items()}
+    tree = _dict_to_dc(StoredTree, d.get("tree") or {})
+    skills = [_dict_to_dc(StoredSkill, sk) for sk in (d.get("skills") or [])]
+    base = {k: v for k, v in d.items() if k not in {"items", "tree", "skills"}}
+    v = _dict_to_dc(BuildVariant, base)
+    v.items = items
+    v.tree = tree
+    v.skills = skills
+    return v
+
+
 def _state_from_dict(d: dict) -> State:
     s = State(schema_version=int(d.get("schema_version", SCHEMA_VERSION)))
     for bid, bd in (d.get("builds") or {}).items():
@@ -191,11 +228,29 @@ def _state_from_dict(d: dict) -> State:
         }
         tree = _dict_to_dc(StoredTree, bd.get("tree") or {})
         skills = [_dict_to_dc(StoredSkill, sk) for sk in (bd.get("skills") or [])]
-        base = {k: v for k, v in bd.items() if k not in {"items", "tree", "skills"}}
+        build_variants = [_variant_from_dict(vd) for vd in (bd.get("build_variants") or [])]
+        base = {k: v for k, v in bd.items()
+                if k not in {"items", "tree", "skills", "build_variants"}}
         b = _dict_to_dc(Build, {**base, "id": bid})
         b.items = items
         b.tree = tree
         b.skills = skills
+        b.build_variants = build_variants
+        # Migrate legacy single-variant builds: synthesize one variant mirroring
+        # the flat fields so UI/import code can assume the list is non-empty.
+        if not b.build_variants:
+            b.build_variants = [BuildVariant(
+                id="v1",
+                label=b.label or "Default",
+                main_skill=b.main_skill,
+                items=dict(b.items),
+                tree=b.tree,
+                skills=list(b.skills),
+                tree_viewer_url=b.tree_viewer_url,
+            )]
+            b.active_build_variant_id = "v1"
+        elif not b.active_build_variant_id:
+            b.active_build_variant_id = b.build_variants[0].id
         s.builds[bid] = b
     for vid, vd in (d.get("variants") or {}).items():
         s.variants[vid] = _dict_to_dc(Variant, {**vd, "id": vid})
@@ -215,6 +270,15 @@ def _state_from_dict(d: dict) -> State:
     return s
 
 
+def _variant_to_dict(v: BuildVariant) -> dict:
+    return {
+        **asdict(v),
+        "items": {slot: asdict(it) for slot, it in v.items.items()},
+        "tree": asdict(v.tree),
+        "skills": [asdict(sk) for sk in v.skills],
+    }
+
+
 def _state_to_dict(s: State) -> dict:
     return {
         "schema_version": s.schema_version,
@@ -224,6 +288,7 @@ def _state_to_dict(s: State) -> dict:
                 "items": {slot: asdict(it) for slot, it in b.items.items()},
                 "tree": asdict(b.tree),
                 "skills": [asdict(sk) for sk in b.skills],
+                "build_variants": [_variant_to_dict(v) for v in b.build_variants],
             }
             for bid, b in s.builds.items()
         },
@@ -263,9 +328,7 @@ def save(state: State) -> None:
 
 # ---------- domain helpers ----------
 
-def new_build_from_pob_import(build_obj, *, label: str, phase: str,
-                              pob_code: str, imported_by: str) -> Build:
-    """Convert a lib.pob.Build into our storage Build dataclass."""
+def _items_from_pob(build_obj) -> dict[str, StoredItem]:
     items: dict[str, StoredItem] = {}
     for it in build_obj.items:
         items[it.slot] = StoredItem(
@@ -277,7 +340,11 @@ def new_build_from_pob_import(build_obj, *, label: str, phase: str,
             mods=[{"text": m.text, "kind": m.kind, "tags": list(m.tags)} for m in it.mods],
             content_hash=it.content_hash(),
         )
-    tree = StoredTree(
+    return items
+
+
+def _tree_from_pob(build_obj) -> StoredTree:
+    return StoredTree(
         class_name=build_obj.tree.class_name,
         ascendancy=build_obj.tree.ascendancy,
         nodes=list(build_obj.tree.nodes),
@@ -285,8 +352,31 @@ def new_build_from_pob_import(build_obj, *, label: str, phase: str,
         jewel_sockets={str(k): v for k, v in build_obj.tree.jewel_sockets.items()},
         url=build_obj.tree.url,
     )
-    skills = [StoredSkill(label=sk.label, gems=list(sk.gems), enabled=sk.enabled)
-              for sk in build_obj.skills]
+
+
+def _skills_from_pob(build_obj) -> list[StoredSkill]:
+    return [StoredSkill(label=sk.label, gems=list(sk.gems), enabled=sk.enabled)
+            for sk in build_obj.skills]
+
+
+def new_build_from_pob_import(build_obj, *, label: str, phase: str,
+                              pob_code: str, imported_by: str) -> Build:
+    """Convert a lib.pob.Build into our storage Build dataclass.
+
+    Synthesizes a single default BuildVariant so the Build always has at
+    least one entry in build_variants — multi-variant imports should use
+    new_variant_from_pob_import and apply_active_variant afterwards."""
+    items = _items_from_pob(build_obj)
+    tree = _tree_from_pob(build_obj)
+    skills = _skills_from_pob(build_obj)
+    default_variant = BuildVariant(
+        id="v1",
+        label=label or "Default",
+        main_skill=build_obj.main_skill,
+        items=dict(items),
+        tree=tree,
+        skills=list(skills),
+    )
     return Build(
         id=_new_id(),
         label=label,
@@ -301,7 +391,45 @@ def new_build_from_pob_import(build_obj, *, label: str, phase: str,
         items=items,
         tree=tree,
         skills=skills,
+        build_variants=[default_variant],
+        active_build_variant_id="v1",
     )
+
+
+def new_variant_from_pob_import(build_obj, *, variant_id: str, label: str,
+                                tree_viewer_url: str = "",
+                                pob_variant_spec=None) -> BuildVariant:
+    """Build a BuildVariant from a parsed pob.Build. `pob_variant_spec` is the
+    pob.VariantSpec used to drive the parse — its ids are recorded so re-import
+    can reproduce the selection."""
+    return BuildVariant(
+        id=variant_id,
+        label=label,
+        item_set_id=(pob_variant_spec.item_set_id if pob_variant_spec else ""),
+        skill_set_id=(pob_variant_spec.skill_set_id if pob_variant_spec else ""),
+        tree_spec_id=(pob_variant_spec.tree_spec_id if pob_variant_spec else ""),
+        main_skill=build_obj.main_skill,
+        items=_items_from_pob(build_obj),
+        tree=_tree_from_pob(build_obj),
+        skills=_skills_from_pob(build_obj),
+        tree_viewer_url=tree_viewer_url,
+    )
+
+
+def apply_active_variant(b: Build) -> None:
+    """Copy the currently active BuildVariant's data into the Build's flat
+    fields. Called after switching variants or after multi-variant import so
+    downstream code reading b.items / b.tree / b.skills sees the right data."""
+    if not b.build_variants:
+        return
+    target = next((v for v in b.build_variants
+                   if v.id == b.active_build_variant_id), b.build_variants[0])
+    b.active_build_variant_id = target.id
+    b.main_skill = target.main_skill
+    b.items = dict(target.items)
+    b.tree = target.tree
+    b.skills = list(target.skills)
+    b.tree_viewer_url = target.tree_viewer_url
 
 
 def diff_items(old: Build | None, new_items: dict[str, StoredItem]) -> dict[str, str]:

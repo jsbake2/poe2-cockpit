@@ -322,20 +322,97 @@ def _parse_item_text(slot: str, raw: str) -> Item:
     return item
 
 
-def _active_child(parent: ET.Element, child_tag: str, id_attr: str) -> ET.Element | None:
-    """Return the child element whose `id` matches parent's activeX attribute."""
-    active_id = parent.get(f"active{child_tag}") or parent.get(f"active{child_tag}Id")
+def _active_child(parent: ET.Element, child_tag: str, id_attr: str,
+                  override_id: str | None = None) -> ET.Element | None:
+    """Return the child whose `id` matches parent's activeX attribute, or
+    `override_id` when provided (used to force a specific variant)."""
     candidates = parent.findall(child_tag)
     if not candidates:
         return None
-    if active_id is not None:
+    target_id = override_id or parent.get(f"active{child_tag}") or parent.get(f"active{child_tag}Id")
+    if target_id is not None:
         for c in candidates:
-            if c.get("id") == active_id:
+            if c.get("id") == target_id:
                 return c
     return candidates[0]
 
 
-def parse(root: ET.Element) -> Build:
+@dataclass
+class VariantSpec:
+    """One selectable build variant — a paired (ItemSet, SkillSet, TreeSpec)
+    triple from a PoB export. Most multi-variant PoBs author these in lockstep
+    (e.g. ItemSet id=2 + SkillSet id=2 + Spec id=2 = "MoM variant"); we pair
+    by id first, then by index."""
+    id: str  # synthetic — equals the ItemSet id, since that's the anchor PoB users see
+    label: str
+    item_set_id: str
+    skill_set_id: str
+    tree_spec_id: str
+
+
+def _title_for(el: ET.Element, fallback_prefix: str, idx: int) -> str:
+    for attr in ("title", "name", "label"):
+        v = (el.get(attr) or "").strip()
+        if v:
+            return v
+    return f"{fallback_prefix} {idx + 1}"
+
+
+def list_variants(root: ET.Element) -> list[VariantSpec]:
+    """Enumerate variant triples present in the PoB XML. Always returns at
+    least one variant (the active one) so callers can treat single-variant
+    builds uniformly."""
+    items_el = root.find("Items")
+    skills_el = root.find("Skills")
+    tree_el = root.find("Tree")
+
+    item_sets = items_el.findall("ItemSet") if items_el is not None else []
+    skill_sets = skills_el.findall("SkillSet") if skills_el is not None else []
+    tree_specs = tree_el.findall("Spec") if tree_el is not None else []
+
+    if not item_sets and not skill_sets and not tree_specs:
+        return [VariantSpec(id="0", label="Default", item_set_id="",
+                            skill_set_id="", tree_spec_id="")]
+
+    # Anchor on the longest list — almost always ItemSets — and pair siblings
+    # by index, falling back to the active/first of the other lists.
+    n = max(len(item_sets), len(skill_sets), len(tree_specs), 1)
+
+    def _pick(lst: list[ET.Element], i: int) -> ET.Element | None:
+        if not lst:
+            return None
+        return lst[i] if i < len(lst) else lst[0]
+
+    variants: list[VariantSpec] = []
+    for i in range(n):
+        it = _pick(item_sets, i)
+        sk = _pick(skill_sets, i)
+        tr = _pick(tree_specs, i)
+        # Prefer the item-set label (most authors name those), then skill set, then spec.
+        label = ""
+        for el, prefix in ((it, "Items"), (sk, "Skills"), (tr, "Tree")):
+            if el is not None:
+                cand = _title_for(el, prefix, i)
+                if not cand.startswith(("Items ", "Skills ", "Tree ")):
+                    label = cand
+                    break
+        if not label:
+            label = f"Variant {i + 1}"
+        variants.append(VariantSpec(
+            id=(it.get("id") if it is not None else str(i + 1)) or str(i + 1),
+            label=label,
+            item_set_id=(it.get("id") if it is not None else ""),
+            skill_set_id=(sk.get("id") if sk is not None else ""),
+            tree_spec_id=(tr.get("id") if tr is not None else ""),
+        ))
+    return variants
+
+
+def parse(root: ET.Element, *, item_set_id: str | None = None,
+          skill_set_id: str | None = None,
+          tree_spec_id: str | None = None) -> Build:
+    """Parse PoB XML into a Build. When variant IDs are supplied they override
+    the document's `active*` attrs — used for multi-variant imports."""
     b = Build()
 
     build_el = root.find("Build")
@@ -357,7 +434,8 @@ def parse(root: ET.Element) -> Build:
     # Items
     items_el = root.find("Items")
     if items_el is not None:
-        item_set = _active_child(items_el, "ItemSet", "id") or items_el
+        item_set = _active_child(items_el, "ItemSet", "id",
+                                 override_id=item_set_id) or items_el
         # Index raw items by id from the top-level <Item> elements
         by_id: dict[str, str] = {}
         for it in items_el.findall("Item"):
@@ -377,7 +455,8 @@ def parse(root: ET.Element) -> Build:
     # Skills
     skills_el = root.find("Skills")
     if skills_el is not None:
-        skillset = _active_child(skills_el, "SkillSet", "id") or skills_el
+        skillset = _active_child(skills_el, "SkillSet", "id",
+                                 override_id=skill_set_id) or skills_el
         for sg in skillset.findall("Skill"):
             label = sg.get("label", "") or sg.get("mainActiveSkill", "") or ""
             enabled = sg.get("enabled", "true").lower() != "false"
@@ -391,7 +470,7 @@ def parse(root: ET.Element) -> Build:
     # Tree
     tree_el = root.find("Tree")
     if tree_el is not None:
-        spec = _active_child(tree_el, "Spec", "id")
+        spec = _active_child(tree_el, "Spec", "id", override_id=tree_spec_id)
         if spec is not None:
             b.tree.class_name = spec.get("className", "") or b.class_name
             b.tree.ascendancy = spec.get("ascendClassName", "") or b.ascendancy
@@ -417,15 +496,67 @@ def parse(root: ET.Element) -> Build:
     return b
 
 
-def import_build(text: str, *, client: httpx.Client | None = None) -> Build:
-    """Top-level entry: paste code or share URL -> Build."""
+def import_build(text: str, *, client: httpx.Client | None = None,
+                 variant: VariantSpec | None = None) -> Build:
+    """Top-level entry: paste code or share URL -> Build. If `variant` is
+    given, parse uses that variant's ItemSet/SkillSet/Spec ids."""
     root = load(text, client=client)
-    return parse(root)
+    if variant is None:
+        return parse(root)
+    return parse(
+        root,
+        item_set_id=variant.item_set_id or None,
+        skill_set_id=variant.skill_set_id or None,
+        tree_spec_id=variant.tree_spec_id or None,
+    )
 
 
-def import_build_with_code(text: str, *, client: httpx.Client | None = None
+def import_build_with_code(text: str, *, client: httpx.Client | None = None,
+                           variant: VariantSpec | None = None
                            ) -> tuple[Build, str]:
     """Like `import_build`, but also returns the raw export code (useful for
     passing to downstream tools that expect the original PoB string)."""
     code = resolve_pob_code(text, client=client)
-    return parse(decode_pob_code(code)), code
+    root = decode_pob_code(code)
+    if variant is None:
+        return parse(root), code
+    return parse(
+        root,
+        item_set_id=variant.item_set_id or None,
+        skill_set_id=variant.skill_set_id or None,
+        tree_spec_id=variant.tree_spec_id or None,
+    ), code
+
+
+def list_variants_from_code(text: str, *, client: httpx.Client | None = None
+                            ) -> tuple[list[VariantSpec], str]:
+    """Resolve the input (raw code or share URL) and return (variants, raw_code).
+    Used by the import wizard to preview before persisting."""
+    code = resolve_pob_code(text, client=client)
+    return list_variants(decode_pob_code(code)), code
+
+
+def encode_pob_xml(root: ET.Element) -> str:
+    """Re-encode an XML tree as a PoB export code (zlib + urlsafe-base64).
+    Inverse of decode_pob_code."""
+    xml_bytes = ET.tostring(root, encoding="utf-8", xml_declaration=True)
+    raw = zlib.compress(xml_bytes)
+    b64 = base64.b64encode(raw).decode("ascii")
+    return b64.replace("+", "-").replace("/", "_")
+
+
+def encode_with_active_variant(code: str, variant: VariantSpec) -> str:
+    """Return a new PoB export code with the document's `active*` attributes
+    rewritten to point at this variant. Used by the import wizard so each
+    variant can be pasted into poe.ninja's PoB viewer to render correctly."""
+    root = decode_pob_code(code)
+    items_el = root.find("Items")
+    skills_el = root.find("Skills")
+    tree_el = root.find("Tree")
+    if items_el is not None and variant.item_set_id:
+        items_el.set("activeItemSet", variant.item_set_id)
+    if skills_el is not None and variant.skill_set_id:
+        skills_el.set("activeSkillSet", variant.skill_set_id)
+    if tree_el is not None and variant.tree_spec_id:
+        tree_el.set("activeSpec", variant.tree_spec_id)
+    return encode_pob_xml(root)

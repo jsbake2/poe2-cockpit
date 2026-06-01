@@ -692,6 +692,22 @@
     </div>
   </div>
 
+  <div class="modal-bg" id="variant-wizard-modal">
+    <div class="modal" style="width:720px">
+      <h2>Multi-variant PoB — set up each variant</h2>
+      <p style="color:var(--muted);font-size:12px;margin-bottom:12px">
+        This PoB has multiple variants (MoM/CI/budget/etc.). Each gets its own
+        poe.ninja link. Uncheck any you don't want to import.
+      </p>
+      <div id="variant-wizard-rows"></div>
+      <div class="err" id="variant-wizard-err"></div>
+      <div class="actions">
+        <button onclick="closeVariantWizard()">Cancel</button>
+        <button class="primary" onclick="createMultiVariantBuild()">Create build</button>
+      </div>
+    </div>
+  </div>
+
   <div class="modal-bg" id="setup-viewer-modal">
     <div class="modal" style="width:640px">
       <h2>Link build to tree viewer</h2>
@@ -1087,6 +1103,20 @@ async function loadBuild(buildId) {
   renderTreeViewer();
 }
 
+async function switchActiveVariant(variantId) {
+  if (!state.build) return;
+  if (variantId === state.build.active_build_variant_id) return;
+  const r = await fetch(`/v2/api/builds/${state.build.id}/active-variant`, {
+    method: 'PUT', credentials: 'same-origin',
+    headers: {'Content-Type':'application/json'},
+    body: JSON.stringify({variant_id: variantId}),
+  });
+  const d = await r.json();
+  if (!r.ok) { alert(d.error || ('HTTP ' + r.status)); return; }
+  await loadBuild(state.build.id);
+}
+window.switchActiveVariant = switchActiveVariant;
+
 async function refreshVariants() {
   if (!state.build) return;
   const v = await api('/v2/api/builds/' + state.build.id + '/variants');
@@ -1186,6 +1216,30 @@ function renderGearTab(b) {
     linksBar.id = 'build-links-bar';
     renderBuildLinks(linksBar, b);
     el.appendChild(linksBar);
+  }
+
+  // Build variant selector: only show when the build was imported with >1 PoB
+  // variants. Switching mutates server state (active_build_variant_id) so the
+  // flat items/tree/skills mirror the chosen variant on subsequent loads.
+  const bvs = b.build_variants || [];
+  if (!b._virtual && bvs.length > 1) {
+    const row = document.createElement('div');
+    row.style.cssText = 'display:flex;align-items:center;gap:8px;margin:6px 0 10px';
+    const lbl = document.createElement('label');
+    lbl.style.cssText = 'font-size:12px;color:var(--muted);margin:0';
+    lbl.textContent = 'Variant:';
+    const sel = document.createElement('select');
+    sel.style.cssText = 'font-size:12px;padding:3px 6px';
+    bvs.forEach(v => {
+      const opt = document.createElement('option');
+      opt.value = v.id; opt.textContent = v.label || v.id;
+      if (v.id === b.active_build_variant_id) opt.selected = true;
+      sel.appendChild(opt);
+    });
+    sel.addEventListener('change', () => switchActiveVariant(sel.value));
+    row.appendChild(lbl);
+    row.appendChild(sel);
+    el.appendChild(row);
   }
 
   if (b._virtual) {
@@ -2856,6 +2910,31 @@ async function doImport() {
   if (!pob) { $('import-err').textContent = 'Paste a PoB code or URL.'; return; }
   const label = $('pob-label').value.trim();
   const phase = $('pob-phase').value;
+  // Step 1: preview — detect variants without persisting.
+  let preview;
+  try {
+    const r = await fetch('/v2/api/builds/preview', {
+      method: 'POST', credentials: 'same-origin',
+      headers: {'Content-Type':'application/json'},
+      body: JSON.stringify({pob}),
+    });
+    preview = await r.json();
+    if (!r.ok) { $('import-err').textContent = preview.error || ('HTTP ' + r.status); return; }
+  } catch (e) {
+    $('import-err').textContent = e.message || String(e);
+    return;
+  }
+
+  const variants = preview.variants || [];
+  // Multi-variant: hand off to the wizard so the user can per-variant skip and
+  // capture poe.ninja URLs separately.
+  if (variants.length > 1) {
+    closeImport();
+    openVariantWizard({pob, label, phase, variants});
+    return;
+  }
+
+  // Single variant: do a normal import, then chain to the existing setup-viewer.
   try {
     const r = await fetch('/v2/api/builds', {
       method: 'POST', credentials: 'same-origin',
@@ -2869,7 +2948,6 @@ async function doImport() {
     await refreshBuilds();
     if (d.build_id) {
       await setActiveBuild(d.build_id);
-      // Chain into the tree-viewer setup flow
       openSetupViewer();
     }
   } catch (e) {
@@ -2878,6 +2956,121 @@ async function doImport() {
 }
 window.closeImport = closeImport;
 window.doImport = doImport;
+
+// --- Multi-variant import wizard ----------------------------------------
+let _wizardState = null;  // {pob, label, phase, variants: [{...,pob_code,_url,_include}]}
+
+function openVariantWizard(ctx) {
+  // Decorate each variant row with the per-variant URL (empty) and include flag.
+  ctx.variants = ctx.variants.map(v => ({...v, _url: '', _include: true}));
+  _wizardState = ctx;
+  $('variant-wizard-err').textContent = '';
+  renderVariantWizard();
+  $('variant-wizard-modal').classList.add('open');
+}
+function closeVariantWizard() {
+  $('variant-wizard-modal').classList.remove('open');
+  _wizardState = null;
+}
+
+function renderVariantWizard() {
+  const ctx = _wizardState;
+  if (!ctx) return;
+  const rows = $('variant-wizard-rows');
+  rows.innerHTML = '';
+  ctx.variants.forEach((v, idx) => {
+    const row = document.createElement('div');
+    row.style.cssText = 'border:1px solid var(--border);border-radius:4px;padding:10px 12px;margin-bottom:10px;background:var(--bg-soft)';
+    row.innerHTML = `
+      <div style="display:flex;align-items:center;gap:10px;margin-bottom:8px">
+        <input type="checkbox" id="wiz-inc-${idx}" ${v._include ? 'checked' : ''} style="margin:0">
+        <label for="wiz-inc-${idx}" style="margin:0;font-weight:600;font-size:13px;flex:1">Variant ${idx + 1}</label>
+        <input type="text" id="wiz-lbl-${idx}" value="${escapeAttr(v.label)}" placeholder="label"
+               style="flex:2;padding:4px 8px;font-size:12px">
+      </div>
+      <div style="display:flex;gap:8px;align-items:center;margin-left:24px">
+        <button id="wiz-copy-${idx}" type="button" style="background:var(--gold);color:#080600;border:none;border-radius:3px;padding:6px 10px;font-weight:700;font-size:11px;cursor:pointer;white-space:nowrap">
+          Copy variant code & open poe.ninja ↗
+        </button>
+        <input type="text" id="wiz-url-${idx}" placeholder="poe.ninja URL for this variant"
+               style="flex:1;padding:4px 8px;font-size:12px" value="${escapeAttr(v._url)}">
+      </div>
+    `;
+    rows.appendChild(row);
+    $(`wiz-inc-${idx}`).addEventListener('change', (e) => {
+      ctx.variants[idx]._include = e.target.checked;
+    });
+    $(`wiz-lbl-${idx}`).addEventListener('input', (e) => {
+      ctx.variants[idx].label = e.target.value;
+    });
+    $(`wiz-url-${idx}`).addEventListener('input', (e) => {
+      ctx.variants[idx]._url = e.target.value;
+    });
+    $(`wiz-copy-${idx}`).addEventListener('click', () => copyVariantCode(idx));
+  });
+}
+
+function escapeAttr(s) {
+  return String(s || '').replace(/&/g, '&amp;').replace(/"/g, '&quot;').replace(/</g, '&lt;');
+}
+
+async function copyVariantCode(idx) {
+  const v = _wizardState.variants[idx];
+  const code = v.pob_code || '';
+  if (!code) { $('variant-wizard-err').textContent = 'No code for this variant.'; return; }
+  let copied = false;
+  try {
+    if (navigator.clipboard && navigator.clipboard.writeText) {
+      await navigator.clipboard.writeText(code);
+      copied = true;
+    }
+  } catch (e) { /* fall through to manual copy */ }
+  window.open('https://poe.ninja/poe2/pob', '_blank', 'noopener,noreferrer');
+  const btn = $(`wiz-copy-${idx}`);
+  const orig = btn.textContent;
+  btn.textContent = copied ? '✓ Copied — paste into poe.ninja' : 'Opened tab — copy manually';
+  setTimeout(() => { btn.textContent = orig; }, 5000);
+}
+
+async function createMultiVariantBuild() {
+  const ctx = _wizardState;
+  if (!ctx) return;
+  $('variant-wizard-err').textContent = '';
+  const selected = ctx.variants.filter(v => v._include);
+  if (!selected.length) {
+    $('variant-wizard-err').textContent = 'Include at least one variant.';
+    return;
+  }
+  const body = {
+    pob: ctx.pob,
+    label: ctx.label,
+    phase: ctx.phase,
+    variants: selected.map(v => ({
+      variant_id: v.id,
+      label: (v.label || '').trim(),
+      tree_viewer_url: (v._url || '').trim(),
+    })),
+  };
+  try {
+    const r = await fetch('/v2/api/builds', {
+      method: 'POST', credentials: 'same-origin',
+      headers: {'Content-Type':'application/json'},
+      body: JSON.stringify(body),
+    });
+    const d = await r.json();
+    if (!r.ok) { $('variant-wizard-err').textContent = d.error || ('HTTP ' + r.status); return; }
+    closeVariantWizard();
+    state.phase = ctx.phase; syncPhaseUI();
+    await refreshBuilds();
+    if (d.build_id) {
+      await setActiveBuild(d.build_id);
+    }
+  } catch (e) {
+    $('variant-wizard-err').textContent = e.message || String(e);
+  }
+}
+window.closeVariantWizard = closeVariantWizard;
+window.createMultiVariantBuild = createMultiVariantBuild;
 
 // --- Tree viewer setup (copy raw PoB → paste into iframe → paste URL back) ----
 function openSetupViewer() {

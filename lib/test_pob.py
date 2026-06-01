@@ -137,7 +137,81 @@ def main() -> None:
 
     assert build.notes.startswith("Leveling notes")
 
+    # ---- multi-variant ----
+    test_multi_variant()
     print("lib.pob smoke tests passed.")
+
+
+MULTI_VARIANT_XML = """<?xml version="1.0" encoding="UTF-8"?>
+<PathOfBuilding>
+  <Build level="92" className="Witch" ascendClassName="Infernalist" mainSocketGroup="1"/>
+  <Items activeItemSet="2">
+    <Item id="1">Rarity: RARE
+Mom Helmet
+Greater Helmet
++30 to maximum Life
+    </Item>
+    <Item id="2">Rarity: RARE
+CI Helmet
+Greater Helmet
++90 to maximum Energy Shield
+    </Item>
+    <ItemSet id="1" title="MoM Variant">
+      <Slot name="Helmet" itemId="1"/>
+    </ItemSet>
+    <ItemSet id="2" title="CI Variant">
+      <Slot name="Helmet" itemId="2"/>
+    </ItemSet>
+  </Items>
+  <Skills activeSkillSet="2">
+    <SkillSet id="1" title="MoM Skills">
+      <Skill label="Fireball" mainActiveSkill="1"><Gem nameSpec="Fireball"/></Skill>
+    </SkillSet>
+    <SkillSet id="2" title="CI Skills">
+      <Skill label="Ice Nova" mainActiveSkill="1"><Gem nameSpec="Ice Nova"/></Skill>
+    </SkillSet>
+  </Skills>
+  <Tree activeSpec="2">
+    <Spec id="1" className="Witch" nodes="10000,10001">
+      <URL>https://example/mom</URL>
+    </Spec>
+    <Spec id="2" className="Witch" nodes="20000,20001">
+      <URL>https://example/ci</URL>
+    </Spec>
+  </Tree>
+</PathOfBuilding>
+"""
+
+
+def test_multi_variant() -> None:
+    code = encode_pob(MULTI_VARIANT_XML)
+    variants, _ = pob.list_variants_from_code(code)
+    assert len(variants) == 2, [v.label for v in variants]
+    labels = [v.label for v in variants]
+    assert "MoM Variant" in labels, labels
+    assert "CI Variant" in labels, labels
+
+    # Parse as MoM (id=1) — should pick MoM helmet, fireball skill, mom tree url.
+    mom = next(v for v in variants if v.label == "MoM Variant")
+    b_mom = pob.import_build(code, variant=mom)
+    assert b_mom.items_by_slot()["Helmet"].name == "Mom Helmet", b_mom.items_by_slot()["Helmet"].name
+    assert b_mom.skills[0].label == "Fireball"
+    assert b_mom.tree.url.endswith("/mom"), b_mom.tree.url
+
+    # Parse as CI (id=2) — should pick CI helmet, ice nova skill, ci tree url.
+    ci = next(v for v in variants if v.label == "CI Variant")
+    b_ci = pob.import_build(code, variant=ci)
+    assert b_ci.items_by_slot()["Helmet"].name == "CI Helmet"
+    assert b_ci.skills[0].label == "Ice Nova"
+    assert b_ci.tree.url.endswith("/ci")
+
+    # No variant given -> falls back to activeItemSet/activeSkillSet/activeSpec = CI
+    b_default = pob.import_build(code)
+    assert b_default.items_by_slot()["Helmet"].name == "CI Helmet"
+
+    # Single-variant XML (the synthetic one above) should yield exactly 1.
+    single, _ = pob.list_variants_from_code(encode_pob(SYNTHETIC_XML))
+    assert len(single) == 1, [v.label for v in single]
 
 
 if __name__ == "__main__":

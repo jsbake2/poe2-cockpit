@@ -56,14 +56,21 @@ def _sanitize_for_json(obj):
     return obj
 
 
-def _build_to_dict(b: store.Build) -> dict:
-    d = asdict(b)
-    # Include mod hashes alongside the text for client-side keying of rankings.
-    for slot, it in d["items"].items():
+def _augment_items_with_hashes(items: dict) -> None:
+    for slot, it in items.items():
         it["mods"] = [
             {**m, "hash": pob.Mod(text=m["text"], kind=m["kind"]).hash()}
             for m in it["mods"]
         ]
+
+
+def _build_to_dict(b: store.Build) -> dict:
+    d = asdict(b)
+    # Include mod hashes alongside the text for client-side keying of rankings.
+    _augment_items_with_hashes(d["items"])
+    # Same for every variant so the UI can switch variants client-side.
+    for v in d.get("build_variants") or []:
+        _augment_items_with_hashes(v["items"])
     return _sanitize_for_json(d)
 
 
@@ -79,6 +86,10 @@ async def list_builds():
                 "main_skill": b.main_skill, "level": 0,
                 "imported_at": b.imported_at,
                 "imported_by": b.imported_by,
+                "build_variants": [
+                    {"id": v.id, "label": v.label} for v in b.build_variants
+                ],
+                "active_build_variant_id": b.active_build_variant_id,
             }
             for b in s.builds.values()
         ]
@@ -94,6 +105,56 @@ async def get_build(build_id: str):
     return _build_to_dict(b)
 
 
+@router.post("/api/builds/preview")
+async def preview_pob(request: Request):
+    """Parse a PoB paste/URL without persisting; return variants for the
+    multi-variant import wizard. jbaker-only (matches /api/builds POST)."""
+    user = _require_user(request)
+    if user != "jbaker":
+        return JSONResponse({"error": "jbaker-only"}, status_code=403)
+    body = await request.json()
+    text = (body.get("pob") or "").strip()
+    if not text:
+        return JSONResponse({"error": "missing 'pob'"}, status_code=400)
+    try:
+        variants, raw_code = pob.list_variants_from_code(text)
+        # Also parse the default variant for the build-level metadata
+        # (class, ascendancy) used to suggest a label.
+        default_build = pob.import_build(raw_code)
+    except pob.PoBImportError as e:
+        return JSONResponse({"error": f"PoB parse failed: {e}"}, status_code=400)
+    except Exception as e:
+        return JSONResponse(
+            {"error": f"Preview failed ({type(e).__name__}): {e}"}, status_code=400
+        )
+    return {
+        "ok": True,
+        "pob_code": raw_code,
+        "class_name": default_build.class_name,
+        "ascendancy": default_build.ascendancy,
+        "level": default_build.level,
+        "variants": [
+            {
+                "id": v.id,
+                "label": v.label,
+                "item_set_id": v.item_set_id,
+                "skill_set_id": v.skill_set_id,
+                "tree_spec_id": v.tree_spec_id,
+                # Variant-specific PoB code: same XML, but with active* attrs
+                # rewritten to this variant. Pasting this into poe.ninja's PoB
+                # viewer renders THIS variant, so the user can grab a distinct
+                # poe.ninja URL per variant.
+                "pob_code": pob.encode_with_active_variant(raw_code, v),
+            }
+            for v in variants
+        ],
+    }
+
+
+def _short_variant_id(idx: int) -> str:
+    return f"v{idx + 1}"
+
+
 @router.post("/api/builds")
 async def import_build(request: Request):
     user = _require_user(request)
@@ -107,30 +168,148 @@ async def import_build(request: Request):
     phase = (body.get("phase") or "endgame").strip().lower()
     if phase not in ("leveling", "endgame"):
         return JSONResponse({"error": "phase must be 'leveling' or 'endgame'"}, status_code=400)
-    tree_viewer_url = (body.get("tree_viewer_url") or "").strip()
+
+    # Legacy single-variant body: just a tree_viewer_url.
+    # New multi-variant body: a `variants` array where each entry references a
+    # pob variant id (from /preview) and supplies its own tree_viewer_url+label.
+    legacy_tree_viewer_url = (body.get("tree_viewer_url") or "").strip()
+    variants_in = body.get("variants")
+
     try:
-        parsed, raw_code = pob.import_build_with_code(text)
+        pob_variants, raw_code = pob.list_variants_from_code(text)
     except pob.PoBImportError as e:
         return JSONResponse({"error": f"PoB parse failed: {e}"}, status_code=400)
     except Exception as e:
         return JSONResponse(
             {"error": f"Import failed ({type(e).__name__}): {e}"}, status_code=400
         )
+    pob_variants_by_id = {v.id: v for v in pob_variants}
 
+    # Normalize selection list. If client didn't send `variants`, fall back to
+    # the PoB's currently-active variant (legacy behavior).
+    if isinstance(variants_in, list) and variants_in:
+        selected: list[dict] = []
+        for entry in variants_in:
+            pob_vid = (entry.get("variant_id") or "").strip()
+            spec = pob_variants_by_id.get(pob_vid)
+            if spec is None:
+                return JSONResponse(
+                    {"error": f"unknown variant_id {pob_vid!r}"}, status_code=400
+                )
+            selected.append({
+                "spec": spec,
+                "label": (entry.get("label") or spec.label).strip(),
+                "tree_viewer_url": (entry.get("tree_viewer_url") or "").strip(),
+            })
+    else:
+        spec = pob_variants[0]
+        selected = [{
+            "spec": spec,
+            "label": spec.label,
+            "tree_viewer_url": legacy_tree_viewer_url,
+        }]
+
+    # Parse each selected variant to a pob.Build, then convert to BuildVariant.
+    try:
+        per_variant_builds = [
+            (sel, pob.import_build(raw_code, variant=sel["spec"]))
+            for sel in selected
+        ]
+    except pob.PoBImportError as e:
+        return JSONResponse({"error": f"PoB parse failed: {e}"}, status_code=400)
+
+    # Derive top-level metadata from the first selected variant.
+    first_build = per_variant_builds[0][1]
     if not label:
-        label = f"{parsed.class_name} — {parsed.ascendancy or phase}".strip(" —")
+        label = f"{first_build.class_name} — {first_build.ascendancy or phase}".strip(" —")
+
+    build_variants: list[store.BuildVariant] = []
+    for idx, (sel, pb) in enumerate(per_variant_builds):
+        build_variants.append(store.new_variant_from_pob_import(
+            pb,
+            variant_id=_short_variant_id(idx),
+            label=sel["label"],
+            tree_viewer_url=sel["tree_viewer_url"],
+            pob_variant_spec=sel["spec"],
+        ))
 
     s = store.load()
     stored = store.new_build_from_pob_import(
-        parsed, label=label, phase=phase, pob_code=raw_code, imported_by=user,
+        first_build, label=label, phase=phase, pob_code=raw_code, imported_by=user,
     )
-    stored.tree_viewer_url = tree_viewer_url
+    # Replace the synthesized single-variant entry with the user's selection
+    # and re-mirror flat fields to whichever variant they marked active.
+    stored.build_variants = build_variants
+    requested_active = (body.get("active_variant_id") or build_variants[0].id).strip()
+    stored.active_build_variant_id = (
+        requested_active if any(v.id == requested_active for v in build_variants)
+        else build_variants[0].id
+    )
+    store.apply_active_variant(stored)
     s.builds[stored.id] = stored
     s.active_builds.setdefault(user, stored.id)
     for other in ("jbaker", "matt"):
         s.active_builds.setdefault(other, stored.id)
     store.save(s)
-    return {"ok": True, "build_id": stored.id, "label": stored.label}
+    return {
+        "ok": True,
+        "build_id": stored.id,
+        "label": stored.label,
+        "variants": [{"id": v.id, "label": v.label} for v in stored.build_variants],
+        "active_build_variant_id": stored.active_build_variant_id,
+    }
+
+
+@router.put("/api/builds/{build_id}/active-variant")
+async def set_active_build_variant(build_id: str, request: Request):
+    """Switch the active BuildVariant; flat fields get re-mirrored from it."""
+    user = _require_user(request)
+    if user != "jbaker":
+        return JSONResponse({"error": "jbaker-only"}, status_code=403)
+    body = await request.json()
+    variant_id = (body.get("variant_id") or "").strip()
+    if not variant_id:
+        return JSONResponse({"error": "missing 'variant_id'"}, status_code=400)
+    s = store.load()
+    b = s.builds.get(build_id)
+    if not b:
+        return JSONResponse({"error": "not found"}, status_code=404)
+    if not any(v.id == variant_id for v in b.build_variants):
+        return JSONResponse({"error": f"unknown variant {variant_id!r}"}, status_code=400)
+    b.active_build_variant_id = variant_id
+    store.apply_active_variant(b)
+    store.save(s)
+    return {
+        "ok": True,
+        "build_id": build_id,
+        "active_build_variant_id": variant_id,
+    }
+
+
+@router.put("/api/builds/{build_id}/variants/{variant_id}")
+async def update_build_variant(build_id: str, variant_id: str, request: Request):
+    """Edit a build variant's user-facing fields (label, poe.ninja URL).
+    If the edited variant is active, the build's flat tree_viewer_url is updated
+    too."""
+    user = _require_user(request)
+    if user != "jbaker":
+        return JSONResponse({"error": "jbaker-only"}, status_code=403)
+    body = await request.json()
+    s = store.load()
+    b = s.builds.get(build_id)
+    if not b:
+        return JSONResponse({"error": "not found"}, status_code=404)
+    target = next((v for v in b.build_variants if v.id == variant_id), None)
+    if target is None:
+        return JSONResponse({"error": "variant not found"}, status_code=404)
+    if "label" in body:
+        target.label = (body.get("label") or "").strip() or target.label
+    if "tree_viewer_url" in body:
+        target.tree_viewer_url = (body.get("tree_viewer_url") or "").strip()
+    if target.id == b.active_build_variant_id:
+        store.apply_active_variant(b)
+    store.save(s)
+    return {"ok": True, "variant": asdict(target)}
 
 
 @router.put("/api/builds/{build_id}/tree-viewer")
@@ -144,6 +323,11 @@ async def set_tree_viewer_url(build_id: str, request: Request):
     b = s.builds.get(build_id)
     if not b:
         return JSONResponse({"error": "not found"}, status_code=404)
+    # Persist on the active variant (the flat field is just a mirror).
+    active = next((v for v in b.build_variants
+                   if v.id == b.active_build_variant_id), None)
+    if active is not None:
+        active.tree_viewer_url = url
     b.tree_viewer_url = url
     store.save(s)
     return {"ok": True, "url": url}
