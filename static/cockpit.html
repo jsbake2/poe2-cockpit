@@ -1,0 +1,2949 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8" />
+<meta name="viewport" content="width=device-width,initial-scale=1" />
+<title>PoE2 Cockpit</title>
+<style>
+  :root {
+    --bg: #080604; --panel: #12100a; --panel-2: #1a1610;
+    --border: #3a2a16; --border-2: #5a4020;
+    --text: #d4c5a9; --muted: #8a7a5a;
+    --gold: #c8a84b; --gold-dim: #7a6030;
+    --red: #e06050;
+    --rare: #ffff77; --unique: #af6025; --magic: #8888ff; --normal: #c8c8c8;
+  }
+  /* Ported themes from v1 (inferno/void/glacier/verdant/silver) */
+  [data-theme="inferno"] {
+    --bg:#080302; --panel:#110804; --panel-2:#170a05;
+    --border:#3a180c; --border-2:#5c2010;
+    --text:#d4b8a5; --muted:#8a6050;
+    --gold:#e05828; --gold-dim:#7a2c10;
+  }
+  [data-theme="void"] {
+    --bg:#060408; --panel:#0d0b14; --panel-2:#110d1a;
+    --border:#2e1c42; --border-2:#48266a;
+    --text:#c8bcda; --muted:#78688e;
+    --gold:#a868f0; --gold-dim:#5e2898;
+  }
+  [data-theme="glacier"] {
+    --bg:#02070f; --panel:#071019; --panel-2:#091222;
+    --border:#122b44; --border-2:#1c456c;
+    --text:#b5ccd8; --muted:#587688;
+    --gold:#46b8e6; --gold-dim:#1a6e96;
+  }
+  [data-theme="verdant"] {
+    --bg:#030806; --panel:#070e09; --panel-2:#09130b;
+    --border:#142e18; --border-2:#1e4826;
+    --text:#b5d0ba; --muted:#577860;
+    --gold:#4ec868; --gold-dim:#1e6030;
+  }
+  [data-theme="silver"] {
+    --bg:#0c0c10; --panel:#111116; --panel-2:#1a1a20;
+    --border:#303040; --border-2:#505065;
+    --text:#d0d0e0; --muted:#808090;
+    --gold:#c0c0d8; --gold-dim:#606075;
+  }
+  * { box-sizing: border-box; margin: 0; padding: 0; }
+  html, body { height: 100%; overflow: hidden; }
+  body {
+    background: var(--bg); color: var(--text);
+    font-family: "Segoe UI", system-ui, sans-serif; font-size: 13px;
+    display: flex; flex-direction: column;
+  }
+
+  /* Header */
+  header {
+    background: var(--panel); border-bottom: 1px solid var(--border);
+    padding: 8px 14px; display: flex; align-items: center; gap: 14px;
+    height: 48px; flex: 0 0 auto;
+  }
+  header h1 {
+    font-size: 14px; color: var(--gold); letter-spacing: 1px;
+    text-transform: uppercase; font-weight: 700; white-space: nowrap;
+  }
+  header .spacer { flex: 1; }
+  header select, header button {
+    background: var(--panel-2); color: var(--text);
+    border: 1px solid var(--border); border-radius: 3px;
+    padding: 5px 10px; font-family: inherit; font-size: 12px;
+    cursor: pointer;
+  }
+  header select:focus, header button:hover {
+    border-color: var(--gold-dim); outline: none;
+  }
+  header button.primary {
+    background: var(--gold-dim); color: #080600; font-weight: 700;
+    border-color: var(--gold-dim);
+  }
+  header button.primary:hover { background: var(--gold); }
+  header .phase-toggle {
+    display: inline-flex; border: 1px solid var(--border); border-radius: 3px;
+    overflow: hidden;
+  }
+  header .phase-toggle button {
+    border: none; border-radius: 0; padding: 5px 10px; background: var(--panel-2);
+  }
+  header .phase-toggle button.active {
+    background: var(--gold-dim); color: #080600; font-weight: 700;
+  }
+  header .user { color: var(--muted); font-size: 11px; }
+
+  /* Main layout */
+  main {
+    flex: 1; display: grid;
+    grid-template-columns: 1fr 480px;
+    min-height: 0;
+  }
+  .tree-panel {
+    background: #050403; border-right: 1px solid var(--border);
+    position: relative; overflow: hidden;
+  }
+  .tree-panel .tree-overlay {
+    position: absolute; top: 8px; left: 8px; background: rgba(20,15,10,0.85);
+    border: 1px solid var(--border); border-radius: 3px; padding: 6px 10px;
+    font-size: 11px; color: var(--muted);
+  }
+  .tree-panel .tree-overlay b { color: var(--text); }
+
+  /* Tree styling — vector-effect keeps strokes pixel-sized at any zoom */
+  #tree-svg * { vector-effect: non-scaling-stroke; }
+  /* Base (non-allocated) edges: very thin, muted — just enough to see structure */
+  .edge { stroke: #4a3820; stroke-width: 0.8; fill: none; opacity: 0.65; }
+  /* Allocated edges: thin cream-white, crisp, matches in-game look */
+  .edge.allocated { stroke: #f0e8c8; stroke-width: 2.2; opacity: 1; }
+  /* Nodes: dim by default; color-coded only when worth calling out */
+  .node { fill: #2a1f10; stroke: #5a4428; stroke-width: 1; cursor: pointer; }
+  .node.allocated { fill: #f0e8c8; stroke: #fff; stroke-width: 1.5; }
+  .node.notable { fill: #3a2812; stroke: #9a7440; stroke-width: 1.5; }
+  .node.notable.allocated { fill: #f0c850; stroke: #fff; stroke-width: 2; }
+  .node.keystone { fill: #3a2a14; stroke: #c08040; stroke-width: 2.5; }
+  .node.keystone.allocated { fill: #f0c850; stroke: #fff; stroke-width: 3; }
+  .node.jewel { fill: #1a1428; stroke: #5c6ab8; stroke-width: 2; }
+  .node.jewel.allocated { fill: #8888ff; stroke: #fff; stroke-width: 2.5; }
+  .node.class_start { fill: #5a4020; stroke: #c8a84b; stroke-width: 2; }
+  .node:hover { stroke: #fff !important; stroke-width: 3 !important; }
+  #node-tooltip {
+    position: fixed; pointer-events: none;
+    background: rgba(10,8,4,0.96); border: 1px solid var(--gold-dim);
+    border-radius: 3px; padding: 8px 10px; font-size: 12px; max-width: 320px;
+    z-index: 1000; display: none;
+  }
+  #node-tooltip .tt-name { color: var(--gold); font-weight: 700; margin-bottom: 4px; }
+  #node-tooltip .tt-kind { color: var(--muted); font-size: 10px; text-transform: uppercase; letter-spacing: 0.5px; margin-bottom: 2px; }
+  #node-tooltip .tt-stat { color: var(--text); line-height: 1.4; }
+
+  /* Right panel (gear / skills tabs) */
+  .gear-panel {
+    background: var(--bg);
+    display: flex; flex-direction: column; min-height: 0;
+  }
+  .tabs-bar {
+    display: flex; border-bottom: 1px solid var(--border);
+    flex: 0 0 auto;
+  }
+  .tabs-bar .tab {
+    flex: 1; background: var(--panel); color: var(--muted);
+    border: none; border-right: 1px solid var(--border);
+    padding: 10px 14px; font-family: inherit; font-size: 11px;
+    text-transform: uppercase; letter-spacing: 1.5px; font-weight: 700;
+    cursor: pointer;
+  }
+  .tabs-bar .tab:last-child { border-right: none; }
+  .tabs-bar .tab.active {
+    background: var(--bg); color: var(--gold);
+    box-shadow: inset 0 -2px 0 var(--gold);
+  }
+  .tab-content {
+    flex: 1; overflow-y: auto; padding: 10px;
+    display: none;
+  }
+  .tab-content.active { display: block; }
+  .tab-content h3 {
+    color: var(--gold); font-size: 11px; text-transform: uppercase;
+    letter-spacing: 1px; margin: 6px 2px 8px;
+  }
+  .gear-grid {
+    display: grid; grid-template-columns: 1fr 1fr; gap: 6px;
+  }
+
+  /* Skills */
+  .skill-card {
+    background: var(--panel); border: 1px solid var(--border);
+    border-left: 3px solid var(--gold-dim);
+    border-radius: 3px; padding: 10px 12px; margin-bottom: 8px;
+  }
+  .skill-card.disabled { opacity: 0.4; border-left-color: var(--border); }
+  .skill-card .sg-label {
+    font-size: 10px; color: var(--muted); text-transform: uppercase;
+    letter-spacing: 1px; margin-bottom: 6px;
+  }
+  .skill-card .sg-main {
+    display: flex; align-items: center; gap: 10px;
+    font-size: 15px; font-weight: 700; color: var(--gold);
+    margin-bottom: 8px; padding-bottom: 8px;
+    border-bottom: 1px dashed var(--border);
+  }
+  .skill-card .sg-supports { display: flex; flex-direction: column; gap: 4px; }
+  .skill-card .sg-support {
+    display: flex; align-items: center; gap: 10px;
+    font-size: 12px; color: var(--text); padding-left: 6px;
+  }
+  /* Gem dot: colored circle indicating the skill's elemental/type */
+  .gem-dot {
+    width: 11px; height: 11px; border-radius: 50%;
+    flex: 0 0 auto;
+    box-shadow: 0 0 6px currentColor, inset 0 0 2px rgba(0,0,0,0.6);
+    border: 1px solid rgba(0,0,0,0.4);
+  }
+  .gem-dot.gem-main { width: 14px; height: 14px; box-shadow: 0 0 10px currentColor, inset 0 0 3px rgba(0,0,0,0.5); }
+  /* Type palette — PoE2 */
+  .gem-fire      { color: #ff7040; background: radial-gradient(circle at 35% 30%, #ffb880, #ff5020); }
+  .gem-cold      { color: #7ad8ff; background: radial-gradient(circle at 35% 30%, #c8f0ff, #3098d0); }
+  .gem-lightning { color: #ffe070; background: radial-gradient(circle at 35% 30%, #ffffb0, #e0b020); }
+  .gem-chaos     { color: #c080ff; background: radial-gradient(circle at 35% 30%, #e0b8ff, #8030d0); }
+  .gem-physical  { color: #e8e8e8; background: radial-gradient(circle at 35% 30%, #ffffff, #9a9a9a); }
+  .gem-minion    { color: #a080ff; background: radial-gradient(circle at 35% 30%, #d0b8ff, #5030a8); }
+  .gem-support   { color: #60d080; background: radial-gradient(circle at 35% 30%, #a8f0c0, #2a8848); }
+  .gem-spirit    { color: #a0c0ff; background: radial-gradient(circle at 35% 30%, #d0e0ff, #5080d0); }
+  .gem-meta      { color: #f0c850; background: radial-gradient(circle at 35% 30%, #fff0b0, #c08020); }
+  .gem-rune      { color: #c8a868; background: radial-gradient(circle at 35% 30%, #e8d0a0, #8a6030); }
+  .gem-default   { color: #b8b8b8; background: radial-gradient(circle at 35% 30%, #e0e0e0, #707070); }
+  .slot {
+    background: var(--panel); border: 1px solid var(--border); border-radius: 3px;
+    padding: 8px 10px; min-height: 60px;
+  }
+  .slot.empty { opacity: 0.4; }
+  .slot .slot-name {
+    font-size: 10px; color: var(--muted); text-transform: uppercase;
+    letter-spacing: 0.5px; margin-bottom: 3px;
+  }
+  .slot .item-name { font-weight: 700; font-size: 13px; line-height: 1.2; }
+  .slot .item-name.rarity-Rare { color: var(--rare); }
+  .slot .item-name.rarity-Unique { color: var(--unique); }
+  .slot .item-name.rarity-Magic { color: var(--magic); }
+  .slot .item-name.rarity-Normal { color: var(--normal); }
+  .slot .item-base { color: var(--muted); font-size: 11px; margin-bottom: 4px; }
+  .slot .mods { font-size: 11px; line-height: 1.5; color: #b8a878; margin-top: 4px; }
+  .slot .mods .mod-row { display: flex; align-items: flex-start; gap: 4px; }
+  .slot .mods .mod-row .mod { flex: 1; }
+  .slot .mods .mod { display: inline; }
+  .slot .mods .mod.implicit { color: var(--magic); }
+  .slot .mods .mod.enchant { color: #6cd; }
+  .slot .mods .mod.crafted { color: #6cf; }
+  .slot .mods .mod.rune { color: #c96; }
+  .slot .mods .mod.fractured { color: #f80; }
+  .slot .mods .rank-buttons { display: inline-flex; gap: 2px; margin-right: 4px; flex: 0 0 auto; }
+  .slot .mods .rank-btn {
+    width: 16px; height: 16px; border: 1px solid var(--border);
+    background: var(--panel-2); color: var(--muted); font-size: 10px; line-height: 14px;
+    font-weight: 700; cursor: pointer; border-radius: 2px; padding: 0;
+  }
+  .slot .mods .rank-btn:hover { border-color: var(--gold-dim); }
+  .slot .mods .rank-btn.active[data-r=must]   { background: var(--gold); color: #080600; border-color: var(--gold); }
+  .slot .mods .rank-btn.active[data-r=nice]   { background: #557; color: #fff; border-color: #668; }
+  .slot .mods .rank-btn.active[data-r=ignore] { background: #533; color: #aaa; border-color: #744; text-decoration: line-through; }
+  .slot .mods .mod-row[data-r=ignore] .mod { opacity: 0.35; text-decoration: line-through; }
+  .slot .mods .value-inputs {
+    display: flex; gap: 4px; margin: 2px 0 4px 58px;
+    font-size: 10px; color: var(--muted);
+  }
+  .slot .mods .value-inputs input {
+    width: 52px; background: var(--panel-2); color: var(--text);
+    border: 1px solid var(--border); border-radius: 2px;
+    padding: 1px 4px; font-size: 10px; font-family: inherit;
+  }
+  .slot .mods .value-inputs input:focus { border-color: var(--gold-dim); outline: none; }
+  .slot .mods .value-inputs label { font-size: 9px; letter-spacing: 0.5px; text-transform: uppercase; align-self: center; }
+  .slot .mods .tag {
+    display: inline-block; font-size: 9px; color: var(--muted);
+    border: 1px solid var(--border); border-radius: 2px;
+    padding: 0 3px; margin-right: 3px; text-transform: uppercase;
+  }
+  .slot .ilvl { color: var(--muted); font-size: 10px; float: right; }
+  .slot .slot-header {
+    display: flex; justify-content: space-between; align-items: center; gap: 6px;
+    margin-bottom: 3px;
+  }
+  .slot .trade-btn {
+    display: inline-block; background: var(--gold-dim); color: #080600;
+    border: none; border-radius: 3px; padding: 2px 8px; font-size: 10px;
+    font-weight: 700; text-decoration: none; cursor: pointer;
+    text-transform: uppercase; letter-spacing: 0.5px;
+  }
+  .slot .trade-btn:hover { background: var(--gold); }
+  .slot .variants {
+    display: flex; gap: 4px; align-items: center; margin-top: 6px;
+    padding-top: 6px; border-top: 1px dashed var(--border);
+  }
+  .slot .variants select {
+    flex: 1; background: var(--panel-2); color: var(--text);
+    border: 1px solid var(--border); border-radius: 3px;
+    padding: 2px 4px; font-family: inherit; font-size: 10px;
+  }
+  .slot .variants button {
+    background: var(--panel-2); color: var(--text);
+    border: 1px solid var(--border); border-radius: 3px;
+    padding: 2px 6px; font-size: 10px; cursor: pointer;
+  }
+  .slot .variants button:hover { border-color: var(--gold-dim); color: var(--gold); }
+
+  /* Empty state */
+  .empty-state {
+    padding: 40px; text-align: center; color: var(--muted);
+  }
+  .empty-state h2 { color: var(--gold); margin-bottom: 8px; }
+
+  /* News feed styling */
+  .news-hero {
+    display:block; text-decoration:none;
+    background: linear-gradient(135deg, rgba(200,168,75,0.18), rgba(40,20,0,0.55));
+    border: 1px solid var(--gold-dim); border-radius: 6px;
+    padding: 18px 22px; margin-bottom: 14px; position: relative; overflow: hidden;
+    box-shadow: 0 0 24px rgba(200,168,75,0.12) inset, 0 2px 10px rgba(0,0,0,0.4);
+    transition: transform .12s ease, border-color .12s ease, box-shadow .12s ease;
+  }
+  .news-hero:hover {
+    transform: translateY(-1px); border-color: var(--gold);
+    box-shadow: 0 0 32px rgba(200,168,75,0.25) inset, 0 4px 14px rgba(0,0,0,0.5);
+  }
+  .news-hero::before {
+    content: ''; position: absolute; inset: 0;
+    background: radial-gradient(circle at top right, rgba(200,168,75,0.18), transparent 60%);
+    pointer-events: none;
+  }
+  .news-hero-tag {
+    font-size: 10px; color: var(--gold); letter-spacing: 2px; text-transform: uppercase;
+    font-weight: 700; margin-bottom: 6px; opacity: 0.9;
+  }
+  .news-hero-title {
+    font-family: 'Cinzel', Georgia, serif; color: var(--gold);
+    font-size: 26px; font-weight: 700; letter-spacing: 1px;
+    margin-bottom: 6px; text-shadow: 0 0 14px rgba(200,168,75,0.35), 0 1px 0 #000;
+    line-height: 1.15;
+  }
+  .news-hero-meta { color: var(--muted); font-size: 11px; letter-spacing: 0.5px; }
+
+  .news-row {
+    display: flex; align-items: flex-start; gap: 10px;
+    text-decoration: none; padding: 9px 12px; margin-bottom: 4px;
+    border-left: 3px solid var(--border); border-radius: 0 4px 4px 0;
+    background: transparent; transition: background .1s, border-color .1s;
+    position: relative;
+  }
+  .news-row:hover { background: rgba(122,96,48,0.08); border-left-color: var(--gold-dim); }
+  .news-row.patch { border-left-color: var(--gold); }
+  .news-row.patch:hover { border-left-color: #f0d060; }
+  .news-row.unread { background: rgba(122,96,48,0.05); }
+  .news-row-icon { font-size: 14px; line-height: 1.3; flex: 0 0 auto; opacity: 0.85; }
+  .news-row-body { flex: 1; min-width: 0; }
+  .news-row-title {
+    color: var(--text); font-weight: 600; font-size: 13px; line-height: 1.3;
+    margin-bottom: 2px;
+  }
+  .news-row.patch .news-row-title { color: var(--gold); font-weight: 700; }
+  .news-row-meta { color: var(--muted); font-size: 10px; letter-spacing: 0.3px; }
+  .news-row-pip {
+    width: 6px; height: 6px; border-radius: 50%;
+    background: var(--gold); margin-top: 6px; flex: 0 0 auto;
+    box-shadow: 0 0 6px var(--gold);
+  }
+
+  /* Modal */
+  .modal-bg {
+    position: fixed; inset: 0; background: rgba(0,0,0,0.7);
+    display: none; align-items: center; justify-content: center; z-index: 900;
+  }
+  .modal-bg.open { display: flex; }
+  .modal {
+    background: var(--panel); border: 1px solid var(--border-2);
+    border-radius: 4px; padding: 20px 24px; width: 560px; max-width: 92vw;
+  }
+  .modal h2 { color: var(--gold); font-size: 14px; margin-bottom: 12px;
+    text-transform: uppercase; letter-spacing: 1px; }
+  .modal label {
+    display: block; font-size: 11px; color: var(--muted);
+    text-transform: uppercase; letter-spacing: 0.5px; margin: 10px 0 4px;
+  }
+  .modal input[type=text], .modal textarea, .modal select {
+    width: 100%; background: var(--panel-2); color: var(--text);
+    border: 1px solid var(--border); border-radius: 3px;
+    padding: 8px 10px; font-family: inherit; font-size: 12px;
+  }
+  .modal textarea { min-height: 120px; resize: vertical; font-family: "Consolas", monospace; font-size: 11px; word-break: break-all; }
+  .modal .row { display: flex; gap: 8px; }
+  .modal .row > * { flex: 1; }
+  .modal .actions { display: flex; gap: 8px; justify-content: flex-end; margin-top: 16px; }
+  .modal button {
+    background: var(--panel-2); color: var(--text);
+    border: 1px solid var(--border); border-radius: 3px;
+    padding: 7px 14px; font-family: inherit; font-size: 12px; cursor: pointer;
+  }
+  .modal button.primary {
+    background: var(--gold-dim); color: #080600; font-weight: 700;
+    border-color: var(--gold-dim);
+  }
+  .modal button.primary:hover { background: var(--gold); }
+  .modal .err { color: var(--red); font-size: 12px; margin-top: 8px; min-height: 16px; }
+</style>
+</head>
+<body>
+  <header>
+    <h1>PoE2 Cockpit</h1>
+    <div class="phase-toggle" id="phase-toggle">
+      <button data-phase="leveling">Leveling</button>
+      <button data-phase="endgame" class="active">Endgame</button>
+    </div>
+    <select id="build-select" title="Active build"></select>
+    <div class="spacer"></div>
+    <select id="league-select" title="League"><option value="Standard">Standard</option></select>
+    <select id="theme-select" title="Theme">
+      <option value="">gold (default)</option>
+      <option value="inferno">inferno</option>
+      <option value="void">void</option>
+      <option value="glacier">glacier</option>
+      <option value="verdant">verdant</option>
+      <option value="silver">silver</option>
+    </select>
+    <span class="user" id="who"></span>
+    <button id="btn-import" class="primary" style="display:none">+ Add Build</button>
+    <button id="btn-manage-builds" style="display:none;background:var(--panel-2);color:var(--text);border:1px solid var(--border);border-radius:3px;padding:5px 10px;font-family:inherit;font-size:12px;cursor:pointer" title="Manage builds (jbaker only)">Manage</button>
+    <button id="btn-leveling" style="background:var(--panel-2);color:var(--text);border:1px solid var(--border);border-radius:3px;padding:5px 10px;font-family:inherit;font-size:12px;cursor:pointer" title="Browse leveling build library">Leveling</button>
+    <button id="btn-notes" style="background:var(--panel-2);color:var(--text);border:1px solid var(--border);border-radius:3px;padding:5px 10px;font-family:inherit;font-size:12px;cursor:pointer;position:relative" title="Shared notes">Notes<span id="notes-badge" style="display:none;background:var(--red);color:#fff;border-radius:9px;padding:0 6px;font-size:10px;margin-left:4px"></span></button>
+    <button id="btn-news" style="background:var(--panel-2);color:var(--text);border:1px solid var(--border);border-radius:3px;padding:5px 10px;font-family:inherit;font-size:12px;cursor:pointer;position:relative" title="PoE2 patch notes &amp; news">News<span id="news-badge" style="display:none;background:var(--gold-dim);color:#080600;border-radius:9px;padding:0 6px;font-size:10px;margin-left:4px"></span></button>
+    <button id="btn-files" style="background:var(--panel-2);color:var(--text);border:1px solid var(--border);border-radius:3px;padding:5px 10px;font-family:inherit;font-size:12px;cursor:pointer" title="Shared files &amp; profit filter download">Files</button>
+    <button id="btn-logout" style="background:transparent;color:var(--muted);border:none;font-size:11px;cursor:pointer">logout</button>
+  </header>
+
+  <main>
+    <section class="tree-panel">
+      <!-- Wrap + negative margin crops poe.ninja's top navbar out of view -->
+      <div id="tree-iframe-wrap" style="display:none;width:100%;height:100%;overflow:hidden;position:relative">
+        <iframe id="tree-iframe"
+                style="border:0;width:100%;height:calc(100% + 100px);margin-top:-100px;display:block"
+                referrerpolicy="no-referrer" loading="lazy"></iframe>
+      </div>
+      <!-- Shown when the target host is known to block iframing (maxroll etc). -->
+      <div id="tree-blocked-overlay" style="display:none;height:100%;padding:40px;align-items:center;justify-content:center;flex-direction:column;text-align:center;background:var(--bg)">
+        <div style="color:var(--gold);font-size:13px;text-transform:uppercase;letter-spacing:2px;margin-bottom:8px">
+          Guide host blocks embedding
+        </div>
+        <div id="tree-blocked-title" style="color:var(--text);font-size:16px;max-width:70%;margin-bottom:10px"></div>
+        <div id="tree-blocked-host" style="color:var(--muted);font-size:11px;font-family:monospace;margin-bottom:20px"></div>
+        <a id="tree-blocked-btn" href="#" target="_blank" rel="noopener noreferrer"
+           style="background:var(--gold);color:#080600;border:none;border-radius:3px;padding:12px 24px;font-weight:700;font-size:13px;text-decoration:none;letter-spacing:1px;text-transform:uppercase">
+          Open guide in new tab ↗
+        </a>
+        <div style="color:var(--muted);font-size:10px;margin-top:16px;max-width:60%">
+          Sites like maxroll.gg send <code>X-Frame-Options: SAMEORIGIN</code> which blocks any embed. Nothing we can do client-side.
+        </div>
+      </div>
+      <div id="tree-placeholder" style="padding:40px;text-align:center;color:var(--muted)">
+        <h2 style="color:var(--gold);margin-bottom:12px">No tree viewer URL set</h2>
+        <p style="margin-bottom:12px">Paste a <b>poe.ninja</b> or <b>pob.cool</b> passive-tree URL for this build.</p>
+        <p style="margin-bottom:16px;font-size:11px">Example: <code>https://poe.ninja/poe2/passive-skill-tree/84ywvt2GJMaEubAz2Tha268EDzdTyy</code></p>
+        <button id="btn-set-tree-url" style="background:var(--gold-dim);color:#080600;border:none;border-radius:3px;padding:8px 16px;font-weight:700;cursor:pointer;display:none">Edit build</button>
+      </div>
+      <div class="tree-overlay" id="tree-controls" style="display:none;left:auto;right:8px;pointer-events:auto">
+        <a id="tree-open-tab" href="#" target="_blank" rel="noopener" style="background:var(--gold-dim);color:#080600;border:none;border-radius:3px;padding:4px 10px;font-size:11px;cursor:pointer;text-decoration:none;font-weight:700;margin-right:4px">Open ↗</a>
+        <button id="btn-edit-build" style="background:var(--panel-2);color:var(--text);border:1px solid var(--border);border-radius:3px;padding:4px 8px;font-size:11px;cursor:pointer">Edit Build</button>
+      </div>
+      <div id="iframe-blocked-notice" style="display:none;position:absolute;bottom:10px;left:10px;right:10px;background:rgba(20,15,10,0.95);border:1px solid var(--border);border-radius:4px;padding:10px 14px;font-size:12px;color:var(--text);text-align:center">
+        <div style="color:var(--gold);margin-bottom:4px;font-weight:700">If the tree doesn't load</div>
+        <div style="color:var(--muted);font-size:11px">Browsers often block cross-site iframes from poe.ninja. Click <b>Open ↗</b> top-right to view in a new tab.</div>
+      </div>
+    </section>
+    <section class="gear-panel">
+      <div class="tabs-bar">
+        <button class="tab active" data-tab="gear">Gear</button>
+        <button class="tab" data-tab="skills">Skills</button>
+        <button class="tab" data-tab="scanner">Scanner</button>
+        <button class="tab" data-tab="profit" id="tab-profit" style="display:none">Profit</button>
+      </div>
+      <div class="tab-content active" id="tab-content-gear"></div>
+      <div class="tab-content" id="tab-content-skills"></div>
+      <div class="tab-content" id="tab-content-scanner"></div>
+      <div class="tab-content" id="tab-content-profit"></div>
+    </section>
+  </main>
+
+  <div id="node-tooltip"></div>
+
+  <div class="modal-bg" id="rare-walkthrough-modal">
+    <div class="modal" style="width:560px;max-width:94vw">
+      <h2 id="rare-wt-title">Rare Walkthrough</h2>
+      <div id="rare-wt-progress" style="color:var(--muted);font-size:11px;margin-bottom:8px"></div>
+      <div id="rare-wt-body"></div>
+      <div id="rare-wt-err" class="err"></div>
+      <div class="actions" style="justify-content:space-between">
+        <div>
+          <button onclick="rareWtPrev()">← Prev</button>
+        </div>
+        <div style="display:flex;gap:6px">
+          <button onclick="rareWtIgnore()">Ignore</button>
+          <button onclick="rareWtAdd()" class="primary">Add as-is</button>
+          <button onclick="closeRareWt()">Done</button>
+        </div>
+      </div>
+    </div>
+  </div>
+
+  <div class="modal-bg" id="variant-modal">
+    <div class="modal">
+      <h2>Save trade search variant</h2>
+      <p style="color:var(--muted);font-size:11px;margin-bottom:10px">
+        Refine your search on pathofexile.com/trade, then copy the URL and paste it here.
+      </p>
+      <div class="row">
+        <div>
+          <label>Slot</label>
+          <input type="text" id="variant-slot" readonly style="opacity:0.7">
+        </div>
+        <div>
+          <label>Label</label>
+          <input type="text" id="variant-label" placeholder="e.g., budget, res-capped, BiS">
+        </div>
+      </div>
+      <label>Trade URL</label>
+      <input type="text" id="variant-url" placeholder="https://www.pathofexile.com/trade2/search/poe2/...">
+      <label>Notes (optional)</label>
+      <input type="text" id="variant-notes" placeholder="">
+      <div class="err" id="variant-err"></div>
+      <div class="actions">
+        <button onclick="closeVariant()">Cancel</button>
+        <button class="primary" onclick="saveVariant()">Save variant</button>
+      </div>
+    </div>
+  </div>
+
+  <div class="modal-bg" id="files-modal">
+    <div class="modal" style="width:680px;max-width:94vw;max-height:90vh;overflow:hidden;display:flex;flex-direction:column">
+      <h2>Files &amp; Downloads</h2>
+
+      <!-- Pinned: profit filter -->
+      <div id="profit-filter-card" style="background:var(--panel);border:2px solid var(--gold-dim);border-radius:4px;padding:12px 14px;margin-bottom:14px">
+        <div style="color:var(--gold);font-size:10px;text-transform:uppercase;letter-spacing:2px;margin-bottom:4px">⚡ Profit Filter</div>
+        <div id="profit-filter-meta" style="color:var(--muted);font-size:11px;margin-bottom:8px"></div>
+        <div style="display:flex;gap:6px">
+          <button id="btn-download-profit-filter" onclick="downloadProfitFilter()" class="primary" style="background:var(--gold);color:#080600;border:none;border-radius:3px;padding:8px 14px;font-weight:700;cursor:pointer;flex:1">
+            Download
+          </button>
+          <button onclick="refreshFilterInfo()" style="background:var(--panel-2);color:var(--text);border:1px solid var(--border);border-radius:3px;padding:8px 14px;font-size:11px;cursor:pointer">
+            Refresh info
+          </button>
+        </div>
+        <div id="profit-filter-status" style="color:var(--muted);font-size:11px;margin-top:6px;min-height:14px"></div>
+
+        <!-- Base filter section (jbaker-only) -->
+        <div id="base-filter-section" style="display:none;margin-top:10px;padding-top:10px;border-top:1px dashed var(--border)">
+          <div style="color:var(--gold);font-size:10px;text-transform:uppercase;letter-spacing:1.5px;margin-bottom:4px">Base filter</div>
+          <div id="base-filter-meta" style="color:var(--muted);font-size:11px;margin-bottom:6px"></div>
+          <div style="display:flex;gap:6px;align-items:center">
+            <input type="file" id="base-filter-input" accept=".filter" style="flex:1;font-size:11px;color:var(--text)">
+            <button onclick="uploadBaseFilter()" style="background:var(--gold-dim);color:#080600;border:none;border-radius:3px;padding:6px 12px;font-size:11px;font-weight:700;cursor:pointer">Upload</button>
+          </div>
+          <div style="color:var(--muted);font-size:10px;margin-top:4px;line-height:1.4">
+            Download a fresh filter from filterblade.xyz, then upload it here. Profit-highlight rules get prepended on each rebuild.
+          </div>
+          <div id="base-filter-status" style="font-size:11px;margin-top:6px;min-height:14px"></div>
+        </div>
+      </div>
+
+      <!-- Upload row -->
+      <div style="display:flex;gap:6px;align-items:center;margin-bottom:10px">
+        <input type="file" id="files-upload-input" style="flex:1;font-size:11px;color:var(--text)">
+        <button onclick="uploadFile()" style="background:var(--gold-dim);color:#080600;border:none;border-radius:3px;padding:6px 12px;font-size:11px;font-weight:700;cursor:pointer">Upload</button>
+      </div>
+
+      <div style="color:var(--gold);font-size:10px;text-transform:uppercase;letter-spacing:1.5px;margin-bottom:4px">Shared files</div>
+      <div id="files-list" style="flex:1;overflow-y:auto;border:1px solid var(--border);border-radius:3px;background:var(--panel)"></div>
+
+      <div class="actions"><button onclick="closeFiles()">Close</button></div>
+    </div>
+  </div>
+
+  <div class="modal-bg" id="notes-modal">
+    <div class="modal" style="width:640px;max-width:94vw;max-height:90vh;overflow:hidden;display:flex;flex-direction:column">
+      <h2>Shared Notes</h2>
+      <div style="display:flex;gap:6px;margin-bottom:10px">
+        <textarea id="notes-new" placeholder="Type a note for jbaker/matt. Ctrl+Enter to post." style="flex:1;min-height:50px;background:var(--panel-2);color:var(--text);border:1px solid var(--border);border-radius:3px;padding:8px;font-family:inherit;font-size:12px"></textarea>
+        <button id="notes-post-btn" onclick="postNote()" style="background:var(--gold);color:#080600;border:none;border-radius:3px;padding:8px 14px;font-weight:700;cursor:pointer">Post</button>
+      </div>
+      <div id="notes-list" style="flex:1;overflow-y:auto;padding-right:4px"></div>
+      <div class="actions"><button onclick="closeNotes()">Close</button></div>
+    </div>
+  </div>
+
+  <div class="modal-bg" id="news-modal">
+    <div class="modal" style="width:720px;max-width:94vw;max-height:90vh;overflow:hidden;display:flex;flex-direction:column">
+      <h2>PoE2 News &amp; Patch Notes</h2>
+      <div style="display:flex;gap:6px;align-items:center;margin-bottom:10px">
+        <button id="btn-news-refresh" onclick="refreshNews(true)" style="background:var(--panel-2);color:var(--text);border:1px solid var(--border);border-radius:3px;padding:6px 12px;font-size:11px;cursor:pointer">Refresh</button>
+        <label style="color:var(--muted);font-size:10px;display:inline-flex;align-items:center;gap:4px">
+          <input type="checkbox" id="news-only-patches" onchange="renderNewsList()"> Patch notes only
+        </label>
+        <span id="news-status" style="color:var(--muted);font-size:10px;flex:1"></span>
+        <button onclick="markAllNewsRead()" style="background:transparent;color:var(--muted);border:1px solid var(--border);border-radius:3px;padding:4px 10px;font-size:10px;cursor:pointer">Mark all read</button>
+      </div>
+      <div id="news-list" style="flex:1;overflow-y:auto"></div>
+      <div class="actions"><button onclick="closeNews()">Close</button></div>
+    </div>
+  </div>
+
+  <div class="modal-bg" id="leveling-modal">
+    <div class="modal" style="width:720px;max-width:94vw">
+      <h2>Leveling Library</h2>
+      <p style="color:var(--muted);font-size:11px;margin-bottom:10px">
+        Curated PoE2 leveling builds scraped from maxroll.gg. Click a guide to open it on maxroll.
+      </p>
+      <div style="display:flex;gap:8px;margin-bottom:10px;flex-wrap:wrap">
+        <button id="btn-leveling-scan" class="primary" style="display:none">Re-scan sources</button>
+        <button id="btn-leveling-add" class="primary" style="display:none;background:var(--panel-2);color:var(--text);border:1px solid var(--border)">+ Add manually</button>
+        <span id="leveling-last-scan" style="color:var(--muted);font-size:10px;align-self:center;flex:1"></span>
+        <label style="color:var(--muted);font-size:10px;align-self:center">
+          <input type="checkbox" id="leveling-only-filter" checked> Leveling guides only
+        </label>
+      </div>
+      <div id="leveling-add-form" style="display:none;background:var(--panel);border:1px solid var(--border);border-radius:3px;padding:10px;margin-bottom:10px">
+        <div style="color:var(--gold);font-size:10px;text-transform:uppercase;letter-spacing:1.5px;margin-bottom:6px">
+          Add a leveling build
+        </div>
+        <label style="font-size:10px;color:var(--muted);text-transform:uppercase;letter-spacing:0.5px">PoB code or pobb.in / pob.cool / poe2db.tw URL (optional if you provide a guide URL)</label>
+        <textarea id="leveling-add-pob" placeholder="eAHt... or https://pobb.in/xyz or https://poe2db.tw/pob/xyz" style="width:100%;min-height:60px;background:var(--panel-2);color:var(--text);border:1px solid var(--border);border-radius:3px;padding:6px 8px;font-family:monospace;font-size:10px;margin-bottom:6px"></textarea>
+        <div style="display:flex;gap:6px">
+          <input id="leveling-add-title" placeholder="Title (e.g. Flame Wall Infernalist Leveling)" style="flex:2;background:var(--panel-2);color:var(--text);border:1px solid var(--border);border-radius:3px;padding:6px 8px;font-size:11px">
+          <input id="leveling-add-url" placeholder="Guide URL (optional)" style="flex:1;background:var(--panel-2);color:var(--text);border:1px solid var(--border);border-radius:3px;padding:6px 8px;font-size:11px">
+        </div>
+        <div style="display:flex;gap:6px;margin-top:6px">
+          <button onclick="saveLevelingAdd()" class="primary" style="flex:1">Add</button>
+          <button onclick="cancelLevelingAdd()">Cancel</button>
+        </div>
+        <div id="leveling-add-err" style="color:var(--red);font-size:11px;margin-top:4px;min-height:14px"></div>
+      </div>
+      <div id="leveling-list" style="max-height:50vh;overflow:auto"></div>
+      <div class="actions">
+        <button onclick="closeLeveling()">Close</button>
+      </div>
+    </div>
+  </div>
+
+  <div class="modal-bg" id="manage-builds-modal">
+    <div class="modal" style="width:640px;max-width:94vw">
+      <h2>Manage builds</h2>
+      <div id="manage-builds-list" style="max-height:55vh;overflow:auto;margin-top:10px"></div>
+      <div class="actions">
+        <button onclick="closeManageBuilds()">Close</button>
+      </div>
+    </div>
+  </div>
+
+  <div class="modal-bg" id="edit-build-modal">
+    <div class="modal">
+      <h2>Edit build</h2>
+      <label>1. PoB <span style="color:var(--muted);text-transform:none;letter-spacing:0">(leave blank to keep current gear/tree)</span></label>
+      <textarea id="edit-pob-text" placeholder="eAHtfW... OR https://pobb.in/abc OR https://poe2db.tw/pob/abc"></textarea>
+      <label>2. poe.ninja tree viewer URL</label>
+      <input type="text" id="edit-tree-url" placeholder="https://poe.ninja/poe2/pob/...">
+      <div class="row">
+        <div>
+          <label>Label</label>
+          <input type="text" id="edit-label" placeholder="(unchanged)">
+        </div>
+        <div>
+          <label>Phase</label>
+          <select id="edit-phase">
+            <option value="">(unchanged)</option>
+            <option value="endgame">Endgame</option>
+            <option value="leveling">Leveling</option>
+          </select>
+        </div>
+      </div>
+      <div class="err" id="edit-err"></div>
+      <div class="actions">
+        <button onclick="closeEditBuild()">Cancel</button>
+        <button class="primary" onclick="saveEditBuild()">Save</button>
+      </div>
+    </div>
+  </div>
+
+  <div class="modal-bg" id="import-modal">
+    <div class="modal">
+      <h2>Add Build</h2>
+      <label>Paste PoB — accepts <b>raw export code</b>, <b>pobb.in</b>, <b>pob.cool</b>, or <b>poe2db.tw</b> URL</label>
+      <textarea id="pob-text" placeholder="eAHtfW... OR https://pobb.in/abc OR https://poe2db.tw/pob/abc"></textarea>
+      <div class="row">
+        <div>
+          <label>Label</label>
+          <input type="text" id="pob-label" placeholder="auto from class/ascendancy">
+        </div>
+        <div>
+          <label>Phase</label>
+          <select id="pob-phase">
+            <option value="endgame" selected>Endgame</option>
+            <option value="leveling">Leveling</option>
+          </select>
+        </div>
+      </div>
+      <div class="err" id="import-err"></div>
+      <div class="actions">
+        <button onclick="closeImport()">Cancel</button>
+        <button class="primary" onclick="doImport()">Next →</button>
+      </div>
+    </div>
+  </div>
+
+  <div class="modal-bg" id="setup-viewer-modal">
+    <div class="modal" style="width:640px">
+      <h2>Link build to tree viewer</h2>
+      <p style="color:var(--muted);font-size:12px;margin-bottom:10px">
+        Build imported. The tree panel behind this dialog is already loaded to poe.ninja/poe2/pob. Paste your PoB there, then paste poe.ninja's new URL back here.
+      </p>
+      <ol style="color:var(--text);font-size:12px;line-height:1.7;margin:8px 0 10px 18px">
+        <li>Click <b>Copy code & open poe.ninja ↗</b> — copies the PoB and opens poe.ninja/poe2/pob in a new tab.</li>
+        <li>In the new tab: paste (<b>Ctrl+V</b>) into poe.ninja's import box and load.</li>
+        <li>Copy the resulting URL from poe.ninja's address bar (should be <code>poe.ninja/poe2/pob/xxxxx</code>).</li>
+        <li>Paste the URL below and save.</li>
+      </ol>
+      <label>Raw PoB export code</label>
+      <textarea id="setup-raw-code" readonly style="min-height:80px;max-height:120px;font-family:monospace;font-size:10px;word-break:break-all"></textarea>
+      <button id="btn-copy-raw" onclick="copyRawPob()" style="background:var(--gold);color:#080600;border:none;border-radius:3px;padding:10px 14px;font-weight:700;font-size:12px;cursor:pointer;width:100%;margin:6px 0 14px">
+        Copy code & open poe.ninja ↗
+      </button>
+      <label>poe.ninja tree viewer URL</label>
+      <input type="text" id="setup-viewer-url" placeholder="https://poe.ninja/poe2/pob/1ab4f">
+      <div class="err" id="setup-err"></div>
+      <div class="actions">
+        <button onclick="closeSetup()">Skip for now</button>
+        <button class="primary" onclick="saveSetupViewer()">Save</button>
+      </div>
+    </div>
+  </div>
+
+<script>
+const $ = (id) => document.getElementById(id);
+const api = (path, opts) => fetch(path, {credentials: 'same-origin', ...opts}).then(r => r.json());
+
+let state = {
+  user: null,
+  builds: [],       // summaries
+  activeId: null,
+  build: null,      // full active build
+  variants: [],     // variants for active build
+  phase: 'endgame',
+  league: 'Standard',
+  theme: '',
+  prefsLoaded: false,
+};
+
+const RARITY_ORDER = ['Rare','Unique','Magic','Normal',''];
+const SLOTS_ORDER = [
+  'Weapon 1','Weapon 2','Helmet','Body Armour','Gloves','Boots','Belt',
+  'Amulet','Ring 1','Ring 2',
+  'Weapon 1 Swap','Weapon 2 Swap',
+  'Flask 1','Flask 2','Flask 3','Flask 4','Flask 5',
+  'Charm 1','Charm 2','Charm 3',
+];
+
+// --- Boot --------------------------------------------------------------
+async function init() {
+  try {
+    const who = await api('/api/whoami');
+    state.user = who.user;
+    $('who').textContent = who.user || '';
+    if (who.user === 'jbaker') {
+      $('btn-import').style.display = 'inline-block';
+      $('btn-manage-builds').style.display = 'inline-block';
+      $('tab-profit').style.display = 'inline-block';
+    }
+  } catch (e) {
+    location.href = '/login'; return;
+  }
+
+  $('btn-import').onclick = openImport;
+  $('phase-toggle').querySelectorAll('button').forEach(b => {
+    b.onclick = () => { state.phase = b.dataset.phase; syncPhaseUI(); renderBuildList(); };
+  });
+  $('build-select').onchange = async (e) => {
+    const v = e.target.value;
+    if (v.startsWith('lib:')) {
+      await importLibraryEntry(v.slice(4));
+    } else if (v.startsWith('link:')) {
+      openLibraryEntryLink(v.slice(5));
+    } else {
+      await setActiveBuild(v);
+    }
+  };
+  $('theme-select').onchange = (e) => applyTheme(e.target.value, true);
+  $('league-select').onchange = (e) => { state.league = e.target.value; savePrefs(); if (state.build) renderBuild(); };
+
+  $('btn-set-tree-url').onclick = openEditBuild;
+  $('btn-edit-build').onclick = openEditBuild;
+  $('btn-manage-builds').onclick = openManageBuilds;
+  $('btn-leveling').onclick = openLeveling;
+  $('btn-notes').onclick = openNotes;
+  $('btn-news').onclick = openNews;
+  $('btn-files').onclick = openFiles;
+  $('btn-logout').onclick = async () => {
+    try {
+      await fetch('/api/logout', {method: 'POST', credentials: 'same-origin'});
+    } catch (e) { /* ignore, just navigate */ }
+    // The endpoint also issues a Set-Cookie to delete the auth cookie.
+    location.href = '/login';
+  };
+  $('leveling-only-filter').onchange = renderLevelingList;
+  if (state.user === 'jbaker') {
+    $('btn-leveling-scan').style.display = 'inline-block';
+    $('btn-leveling-add').style.display = 'inline-block';
+  }
+  $('btn-leveling-add').onclick = () => {
+    const form = $('leveling-add-form');
+    form.style.display = form.style.display === 'none' ? 'block' : 'none';
+    $('leveling-add-err').textContent = '';
+    setTimeout(() => $('leveling-add-pob').focus(), 30);
+  };
+  $('btn-leveling-scan').onclick = async () => {
+    const btn = $('btn-leveling-scan');
+    btn.disabled = true; btn.textContent = 'Scanning...';
+    try {
+      const r = await fetch('/v2/api/leveling-builds/scan', {method: 'POST', credentials: 'same-origin'});
+      const d = await r.json();
+      if (!r.ok) { alert(d.error || 'scan failed'); return; }
+      await loadLevelingBuilds();
+      renderLevelingList();
+      renderBuildList();
+    } finally {
+      btn.disabled = false; btn.textContent = 'Re-scan sources';
+    }
+  };
+  if (state.user === 'jbaker') $('btn-set-tree-url').style.display = 'inline-block';
+
+  await loadPrefs();
+  await loadLeagues();
+  await loadLevelingBuilds().catch(() => {});
+  await refreshBuilds();
+  // Fire-and-forget: surface unread badges without blocking cockpit load
+  refreshNotes().catch(() => {});
+  refreshNews(false).catch(() => {});
+}
+
+// --- Themes + prefs ----------------------------------------------------
+function applyTheme(name, persist) {
+  state.theme = name || '';
+  if (state.theme) document.documentElement.setAttribute('data-theme', state.theme);
+  else document.documentElement.removeAttribute('data-theme');
+  $('theme-select').value = state.theme;
+  if (persist) savePrefs();
+}
+
+async function loadPrefs() {
+  try {
+    const r = await api('/api/state');
+    const s = (r && r.state) || {};
+    applyTheme(s.theme || '', false);
+    if (s.league) { state.league = s.league; $('league-select').value = s.league; }
+    state.rankings = (s.rankings && typeof s.rankings === 'object') ? s.rankings : {};
+    state.rank_values = (s.rank_values && typeof s.rank_values === 'object') ? s.rank_values : {};
+    state.prefsLoaded = true;
+  } catch (e) { /* no prefs yet */ }
+}
+
+let _saveTimer = null;
+async function savePrefs() {
+  if (!state.prefsLoaded) return;
+  clearTimeout(_saveTimer);
+  _saveTimer = setTimeout(async () => {
+    try {
+      const r = await api('/api/state');
+      const cur = (r && r.state) || {};
+      cur.theme = state.theme;
+      cur.league = state.league;
+      cur.rankings = state.rankings || {};
+      cur.rank_values = state.rank_values || {};
+      await fetch('/api/state', {
+        method: 'POST', credentials: 'same-origin',
+        headers: {'Content-Type':'application/json'},
+        body: JSON.stringify({state: cur}),
+      });
+    } catch (e) { /* ignore */ }
+  }, 250);
+}
+
+async function loadLeagues() {
+  try {
+    const r = await fetch('/api/leagues');
+    if (!r.ok) return;
+    const d = await r.json();
+    const leagues = (d.result || []).filter(l => l.realm === 'poe2');
+    if (!leagues.length) return;
+    const sel = $('league-select');
+    sel.innerHTML = leagues.map(l => `<option value="${l.id}">${l.text || l.id}</option>`).join('');
+    if (state.league && leagues.some(l => l.id === state.league)) {
+      sel.value = state.league;
+    } else {
+      // Prefer the current (non-Standard, non-HC) league
+      const temp = leagues.find(l => !l.id.startsWith('HC') && l.id !== 'Standard' && l.id !== 'Hardcore');
+      sel.value = temp ? temp.id : (leagues[0].id);
+      state.league = sel.value;
+      savePrefs();
+    }
+  } catch (e) { /* fallback to Standard */ }
+}
+
+
+async function refreshBuilds() {
+  const r = await api('/v2/api/builds');
+  state.builds = r.builds || [];
+  const active = await api('/v2/api/active');
+  state.activeId = active.build_id || '';
+  renderBuildList();
+  // Hash override: #build/<id> wins over the server-side active pointer so
+  // bookmarked / shared links land on the right build.
+  const hashId = parseBuildHash();
+  if (hashId && state.builds.find(b => b.id === hashId)) {
+    await setActiveBuild(hashId);
+  } else if (state.activeId && state.builds.find(b => b.id === state.activeId)) {
+    await loadBuild(state.activeId);
+    syncBuildHash(state.activeId);
+  } else if (state.builds.length) {
+    await setActiveBuild(state.builds[0].id);
+  } else {
+    renderEmpty();
+    renderTreeViewer();
+  }
+}
+
+function parseBuildHash() {
+  const m = (location.hash || '').match(/^#build\/([A-Za-z0-9_\-]+)/);
+  return m ? m[1] : '';
+}
+
+function syncBuildHash(buildId) {
+  const target = buildId ? `#build/${buildId}` : '';
+  if (location.hash !== target) {
+    // Use history.replaceState so navigating builds doesn't pollute history,
+    // but the URL is still bookmarkable/shareable.
+    history.replaceState(null, '', location.pathname + location.search + target);
+  }
+}
+
+window.addEventListener('hashchange', async () => {
+  const hashId = parseBuildHash();
+  if (hashId && hashId !== state.activeId && state.builds.find(b => b.id === hashId)) {
+    await setActiveBuild(hashId);
+  }
+});
+
+function syncPhaseUI() {
+  $('phase-toggle').querySelectorAll('button').forEach(b => {
+    b.classList.toggle('active', b.dataset.phase === state.phase);
+  });
+}
+
+function renderBuildList() {
+  const sel = $('build-select');
+  sel.innerHTML = '';
+
+  // Everything for the current phase, tagged so we can sort them.
+  // kind: 'user' (imported build), 'lib' (library w/ pob), 'link' (library URL only)
+  const entries = [];
+
+  for (const b of state.builds) {
+    if (b.phase !== state.phase) continue;
+    entries.push({
+      kind: 'user',
+      value: b.id,
+      cls: b.character_class || 'Unknown',
+      asc: b.ascendancy || '',
+      label: b.label,
+      selected: b.id === state.activeId,
+    });
+  }
+
+  // Library only surfaces in the Leveling dropdown — Endgame is strictly
+  // whatever the user imported via Add Build, no scraped noise.
+  const libMatchPhase = state.phase === 'leveling'
+    ? (state.leveling || []).filter(g => g.is_leveling)
+    : [];
+  for (const g of libMatchPhase) {
+    const hasPob = (g.pob_code || '').trim();
+    if (hasPob) {
+      entries.push({
+        kind: 'lib',
+        value: 'lib:' + g.slug,
+        cls: g.class || 'Unknown',
+        asc: g.ascendancy || '',
+        label: '⚡ ' + g.title,
+      });
+    } else if (g.url) {
+      entries.push({
+        kind: 'link',
+        value: 'link:' + g.slug,
+        cls: g.class || 'Unknown',
+        asc: g.ascendancy || '',
+        label: '↗ ' + g.title,
+      });
+    }
+  }
+
+  if (!entries.length) {
+    const opt = document.createElement('option');
+    opt.value = ''; opt.textContent = `(no ${state.phase} builds)`;
+    sel.appendChild(opt);
+    return;
+  }
+
+  // Group by class; within each class, sort user → lib → link, then by label.
+  const KIND_ORDER = {user: 0, lib: 1, link: 2};
+  const byClass = {};
+  for (const e of entries) {
+    (byClass[e.cls] = byClass[e.cls] || []).push(e);
+  }
+  const classOrder = Object.keys(byClass).sort((a, b) => {
+    if (a === 'Unknown') return 1;
+    if (b === 'Unknown') return -1;
+    return a.localeCompare(b);
+  });
+
+  for (const cls of classOrder) {
+    const g = document.createElement('optgroup');
+    g.label = `── ${cls} (${byClass[cls].length}) ──`;
+    byClass[cls].sort((a, b) => {
+      if (a.kind !== b.kind) return KIND_ORDER[a.kind] - KIND_ORDER[b.kind];
+      return a.label.localeCompare(b.label);
+    });
+    for (const e of byClass[cls]) {
+      const opt = document.createElement('option');
+      opt.value = e.value;
+      opt.textContent = `${e.label}${e.asc ? ' — ' + e.asc : ''}`;
+      if (e.selected) opt.selected = true;
+      g.appendChild(opt);
+    }
+    sel.appendChild(g);
+  }
+}
+
+async function importLibraryEntry(slug) {
+  const r = await fetch(`/v2/api/leveling-builds/${encodeURIComponent(slug)}/import`, {
+    method: 'POST', credentials: 'same-origin',
+  });
+  const d = await r.json();
+  if (!r.ok) {
+    // Fall back to link behavior — show guide URL in iframe (or overlay if blocked)
+    if (d.url) { openLibraryEntryLink(slug); return; }
+    alert(d.error || 'Import failed');
+    await refreshBuilds();
+    return;
+  }
+  await refreshBuilds();
+  if (d.build_id) await setActiveBuild(d.build_id);
+}
+
+function openLibraryEntryLink(slug) {
+  const entry = (state.leveling || []).find(g => g.slug === slug);
+  if (!entry || !entry.url) { refreshBuilds(); return; }
+  // Virtual build — no PoB imported, so gear/skills/trade are empty. Iframe
+  // loads the guide page so jbaker can browse without leaving the cockpit.
+  state.build = {
+    id: '',
+    label: entry.title,
+    character_class: entry.class || '',
+    ascendancy: entry.ascendancy || '',
+    tree_viewer_url: entry.url,
+    items: {},
+    skills: [],
+    level: 0,
+    tree: {nodes: []},
+    phase: 'leveling',
+    pob_code: '',
+    _virtual: true,
+    _source: entry.source || 'library',
+  };
+  state.variants = [];
+  state.activeId = ''; // no real build active
+  renderBuild();
+  renderTreeViewer();
+}
+
+async function setActiveBuild(buildId) {
+  if (!buildId) return;
+  await fetch('/v2/api/active', {
+    method: 'PUT', credentials: 'same-origin',
+    headers: {'Content-Type':'application/json'},
+    body: JSON.stringify({build_id: buildId}),
+  });
+  state.activeId = buildId;
+  await loadBuild(buildId);
+  syncBuildHash(buildId);
+}
+
+async function loadBuild(buildId) {
+  const [b, v] = await Promise.all([
+    api('/v2/api/builds/' + buildId),
+    api('/v2/api/builds/' + buildId + '/variants'),
+  ]);
+  state.build = b;
+  state.variants = v.variants || [];
+  renderBuild();
+  renderTreeViewer();
+}
+
+async function refreshVariants() {
+  if (!state.build) return;
+  const v = await api('/v2/api/builds/' + state.build.id + '/variants');
+  state.variants = v.variants || [];
+  renderBuild();
+}
+
+const DEFAULT_TREE_VIEWER = 'https://poe.ninja/poe2/pob';
+
+// Hosts that send X-Frame-Options: SAMEORIGIN or CSP frame-ancestors 'self'.
+// For these, don't try to iframe — show a new-tab overlay instead.
+const IFRAME_BLOCKED_HOSTS = [
+  'maxroll.gg',
+  'www.pathofexile.com',
+  'pathofexile.com',
+];
+function hostIsBlocked(url) {
+  try {
+    const h = new URL(url).hostname.toLowerCase();
+    return IFRAME_BLOCKED_HOSTS.some(b => h === b || h.endsWith('.' + b));
+  } catch { return false; }
+}
+
+function renderTreeViewer() {
+  const iframe = $('tree-iframe');
+  const wrap = $('tree-iframe-wrap');
+  const placeholder = $('tree-placeholder');
+  const controls = $('tree-controls');
+  const overlay = $('tree-blocked-overlay');
+  const notice = $('iframe-blocked-notice');
+  const url = (state.build && state.build.tree_viewer_url) || DEFAULT_TREE_VIEWER;
+
+  // Reset all display states
+  placeholder.style.display = 'none';
+  overlay.style.display = 'none';
+  wrap.style.display = 'none';
+  notice.style.display = 'none';
+
+  if (!url) {
+    placeholder.style.display = 'block';
+    iframe.src = '';
+    controls.style.display = 'none';
+    return;
+  }
+
+  controls.style.display = 'block';
+  $('tree-open-tab').href = url;
+  $('btn-edit-build').style.display = (state.user === 'jbaker' && !state.build?._virtual) ? 'inline-block' : 'none';
+
+  if (hostIsBlocked(url)) {
+    // Known to block iframe — show inline overlay + Open button, no iframe load.
+    iframe.src = '';
+    overlay.style.display = 'flex';
+    $('tree-blocked-title').textContent = state.build?.label || 'Guide';
+    $('tree-blocked-host').textContent = new URL(url).hostname;
+    $('tree-blocked-btn').href = url;
+    return;
+  }
+
+  // Load into iframe
+  iframe.src = url;
+  const crop = /poe\.ninja/i.test(url) ? 100 : 0;
+  iframe.style.marginTop = `-${crop}px`;
+  iframe.style.height = `calc(100% + ${crop}px)`;
+  wrap.style.display = 'block';
+  notice.style.display = 'block';
+  setTimeout(() => { if (notice) notice.style.display = 'none'; }, 8000);
+}
+
+function renderEmpty() {
+  state.build = null;
+  const empty = '<div class="empty-state"><h2>No build imported yet</h2>' +
+    (state.user === 'jbaker'
+      ? '<p>Click <b>+ Add Build</b> above to get started.</p>'
+      : '<p>Waiting for jbaker to import a Path of Building code.</p>') +
+    '</div>';
+  $('tab-content-gear').innerHTML = empty;
+  $('tab-content-skills').innerHTML = '';
+}
+
+function renderBuild() {
+  const b = state.build;
+  if (!b) { renderEmpty(); return; }
+  renderGearTab(b);
+  renderSkillsTab(b);
+}
+
+function renderGearTab(b) {
+  const el = $('tab-content-gear');
+  el.innerHTML = '';
+  const h1 = document.createElement('h3');
+  h1.textContent = `${b.label} ${b._virtual ? '· (library preview)' : `· Lvl ${b.level || '?'} · ${b.character_class}${b.ascendancy ? ' / ' + b.ascendancy : ''}`}`;
+  el.appendChild(h1);
+
+  if (!b._virtual) {
+    const linksBar = document.createElement('div');
+    linksBar.id = 'build-links-bar';
+    renderBuildLinks(linksBar, b);
+    el.appendChild(linksBar);
+  }
+
+  if (b._virtual) {
+    const msg = document.createElement('div');
+    msg.className = 'empty-state';
+    msg.innerHTML = `
+      <p style="color:var(--muted);font-size:12px;margin-bottom:12px">
+        No PoB attached to this library entry — gear/trade searches aren't available.
+      </p>
+      <p style="color:var(--text);font-size:12px;margin-bottom:12px">
+        On the guide in the tree panel, find the Path of Building link/code,
+        then:
+      </p>
+      ${state.user === 'jbaker' ? `
+        <button onclick="openImport()" style="background:var(--gold-dim);color:#080600;border:none;border-radius:3px;padding:8px 16px;font-weight:700;cursor:pointer">
+          + Add Build from PoB
+        </button>` : ''}
+    `;
+    el.appendChild(msg);
+    return;
+  }
+
+  const grid = document.createElement('div');
+  grid.className = 'gear-grid';
+  el.appendChild(grid);
+
+  const slotsKnown = new Set(SLOTS_ORDER);
+  const slots = [
+    ...SLOTS_ORDER.filter(s => b.items[s]),
+    ...Object.keys(b.items).filter(s => !slotsKnown.has(s)),
+  ];
+  for (const slot of slots) {
+    grid.appendChild(slotCard(slot, b.items[slot]));
+  }
+}
+
+function classifyGem(name) {
+  if (!name) return 'default';
+  const n = name.toLowerCase();
+  // Support gems: numbered suffix (II/III/IV), or common support names
+  if (/\b(ii|iii|iv|v|vi)$/i.test(name)) return 'support';
+  if (/(second wind|lifetap|efficiency|cooldown recovery|prolonged duration|magnified|spell cascade|added (cold|fire|lightning|chaos|physical) damage|minion mastery|feeding frenzy|elemental focus|concentrated effect|increased duration|faster|brutality|hypothermia)/i.test(n)) return 'support';
+  // Fire
+  if (/(fire|flame|ignite|incinerate|combust|pyroclast|solar|phoenix|meteor|firestorm|scorch|volcanic|ember|explosion|detonate|flame wall|fireball|blazing|searing)/i.test(n)) return 'fire';
+  // Cold
+  if (/(cold|frost|ice|icicle|glacial|hypothermia|rime|freeze|brumal|chill|permafrost|comet|frigid|blizzard|frostbolt)/i.test(n)) return 'cold';
+  // Lightning
+  if (/(lightning|thunder|shock|arc |storm|zap|spark|tempest|galvanic|orb of storms|ball lightning|living lightning|static|discharge|arc$)/i.test(n)) return 'lightning';
+  // Chaos / poison / plague
+  if (/(chaos|poison|venom|plague|toxic|decay|blight|caustic|despair|wither|essence drain|contagion)/i.test(n)) return 'chaos';
+  // Minions
+  if (/(minion|skeletal|spectre|zombie|raise |summon |offering|srs|animate|golem|companion|mercenary)/i.test(n)) return 'minion';
+  // Spirit (PoE2 spirit-reserved skills)
+  if (/(herald|aura|vaal |sigil of power|blood mage|war|banner|skitterbot)/i.test(n)) return 'spirit';
+  // Meta / trigger
+  if (/(cast on|trigger|cascade|cast when)/i.test(n)) return 'meta';
+  // Runes
+  if (/(rune|core of|soul core|bonded)/i.test(n)) return 'rune';
+  // Physical (catch-all for phys attacks)
+  if (/(strike|cleave|slam|sweep|leap|whirling|shield|bonestorm|spear|bow|arrow|bleed|rupture)/i.test(n)) return 'physical';
+  return 'default';
+}
+
+function renderSkillsTab(b) {
+  const el = $('tab-content-skills');
+  el.innerHTML = '';
+  if (b._virtual) {
+    el.innerHTML = '<div class="empty-state"><h2>Library preview</h2><p style="color:var(--muted)">Import this build\'s PoB to populate skills.</p></div>';
+    return;
+  }
+  if (!b.skills || !b.skills.length) {
+    el.innerHTML = '<div class="empty-state"><h2>No skills in this PoB</h2></div>';
+    return;
+  }
+  const head = document.createElement('h3');
+  head.textContent = `Skill groups (${b.skills.length})`;
+  el.appendChild(head);
+
+  b.skills.forEach((s, idx) => {
+    const gems = s.gems || [];
+    const label = (s.label && !/^\d+$/.test(s.label))
+      ? s.label
+      : `Skill Group ${idx + 1}`;
+    const card = document.createElement('div');
+    card.className = 'skill-card' + (s.enabled ? '' : ' disabled');
+    const [main, ...supports] = gems;
+    const mainType = main ? classifyGem(main) : 'default';
+    card.innerHTML = `
+      <div class="sg-label">${escHtml(label)}${s.enabled ? '' : ' · <span style="color:var(--red)">disabled</span>'}</div>
+      ${main ? `
+        <div class="sg-main">
+          <span class="gem-dot gem-main gem-${mainType}" title="${mainType}"></span>
+          <span>${escHtml(main)}</span>
+        </div>` : '<div class="sg-main" style="color:var(--muted);font-size:12px;font-weight:normal">(empty group)</div>'}
+      ${supports.length ? `
+        <div class="sg-supports">
+          ${supports.map(g => {
+            const t = classifyGem(g);
+            return `<div class="sg-support"><span class="gem-dot gem-${t}" title="${t}"></span><span>${escHtml(g)}</span></div>`;
+          }).join('')}
+        </div>` : ''}
+    `;
+    el.appendChild(card);
+  });
+}
+
+function switchTab(name) {
+  document.querySelectorAll('.tabs-bar .tab').forEach(t => {
+    t.classList.toggle('active', t.dataset.tab === name);
+  });
+  document.querySelectorAll('.tab-content').forEach(c => {
+    c.classList.toggle('active', c.id === `tab-content-${name}`);
+  });
+  state.activeTab = name;
+  if (name === 'profit' && typeof renderProfitTab === 'function') renderProfitTab();
+  if (name === 'scanner' && typeof renderScannerTab === 'function') renderScannerTab();
+}
+
+document.addEventListener('click', (e) => {
+  if (e.target.classList.contains('tab')) {
+    switchTab(e.target.dataset.tab);
+  }
+});
+
+// --- Scanner tab ------------------------------------------------------
+async function renderScannerTab() {
+  const el = $('tab-content-scanner');
+  if (!state.build || state.build._virtual) {
+    el.innerHTML = '<div class="empty-state"><h2>No build loaded</h2><p style="color:var(--muted)">Import a build to scan for related Reddit/YouTube links.</p></div>';
+    return;
+  }
+  const bid = state.build.id;
+  el.innerHTML = '<div class="empty-state"><h2>Loading scanner…</h2></div>';
+  try {
+    const cfg = await api(`/v2/api/scanner/config?build_id=${encodeURIComponent(bid)}`);
+    state.scannerCfg = cfg;
+    renderScannerUI();
+  } catch (e) {
+    el.innerHTML = `<div class="empty-state"><h2>Failed to load</h2><p style="color:var(--red)">${escHtml(e.message || e)}</p></div>`;
+  }
+}
+
+function renderScannerUI() {
+  const el = $('tab-content-scanner');
+  const cfg = state.scannerCfg || {};
+  const subs = (cfg.subreddits || []).join('\n');
+  const kws = (cfg.keywords || []).join('\n');
+  el.innerHTML = `
+    <h3>Link Scanner — ${escHtml(cfg.label || '')}</h3>
+    <p style="color:var(--muted);font-size:11px;margin-bottom:10px">
+      Searches Reddit for your keywords across the subreddits you list.${cfg.defaults_used ? ' <i>Using auto-derived defaults.</i>' : ''}
+    </p>
+
+    <div style="display:grid;grid-template-columns:1fr 1fr;gap:8px;margin-bottom:10px">
+      <div>
+        <label style="font-size:10px;color:var(--muted);text-transform:uppercase;letter-spacing:0.5px">Subreddits (one per line)</label>
+        <textarea id="scan-subs" style="width:100%;min-height:70px;background:var(--panel-2);color:var(--text);border:1px solid var(--border);border-radius:3px;padding:6px;font-size:11px;font-family:monospace">${escHtml(subs)}</textarea>
+      </div>
+      <div>
+        <label style="font-size:10px;color:var(--muted);text-transform:uppercase;letter-spacing:0.5px">Keywords (one per line)</label>
+        <textarea id="scan-kws" style="width:100%;min-height:70px;background:var(--panel-2);color:var(--text);border:1px solid var(--border);border-radius:3px;padding:6px;font-size:11px;font-family:monospace">${escHtml(kws)}</textarea>
+        <div style="display:flex;gap:10px;margin-top:4px;font-size:10px;color:var(--muted)">
+          <label><input type="radio" name="scan-mode" value="or" checked> Match <b>any</b> keyword</label>
+          <label><input type="radio" name="scan-mode" value="and"> Match <b>all</b> keywords (AND)</label>
+        </div>
+      </div>
+    </div>
+
+    <div style="margin-bottom:8px">
+      <label style="font-size:10px;color:var(--muted);text-transform:uppercase;letter-spacing:0.5px;display:block;margin-bottom:3px">Sources</label>
+      <div style="display:flex;gap:10px;flex-wrap:wrap;font-size:11px;margin-bottom:8px">
+        <label><input type="checkbox" class="scan-src" value="reddit" checked> Reddit</label>
+        <label><input type="checkbox" class="scan-src" value="youtube" checked> YouTube</label>
+        <span style="color:var(--muted);font-size:10px">Maxroll/Mobalytics are in the <b>Leveling</b> library.</span>
+      </div>
+    </div>
+
+    <div style="margin-bottom:8px">
+      <label style="font-size:10px;color:var(--muted);text-transform:uppercase;letter-spacing:0.5px;display:block;margin-bottom:3px">Time range (Reddit only)</label>
+      <div id="scan-trange" style="display:flex;gap:4px;flex-wrap:wrap">
+        ${['day','week','month','year','all'].map(t => `
+          <button class="scan-t-btn" data-t="${t}" style="background:var(--panel-2);color:var(--text);border:1px solid var(--border);border-radius:3px;padding:4px 10px;font-size:11px;cursor:pointer">${t==='day'?'24h':t==='week'?'7d':t==='month'?'30d':t==='year'?'1y':'All'}</button>
+        `).join('')}
+        <button class="scan-t-btn" data-t="custom" style="background:var(--panel-2);color:var(--text);border:1px solid var(--border);border-radius:3px;padding:4px 10px;font-size:11px;cursor:pointer">Custom…</button>
+      </div>
+      <div id="scan-custom" style="display:none;margin-top:6px;gap:6px;align-items:center">
+        <label style="font-size:10px;color:var(--muted)">From</label>
+        <input type="date" id="scan-from" style="background:var(--panel-2);color:var(--text);border:1px solid var(--border);border-radius:3px;padding:4px;font-family:inherit;font-size:11px">
+        <label style="font-size:10px;color:var(--muted)">To</label>
+        <input type="date" id="scan-to" style="background:var(--panel-2);color:var(--text);border:1px solid var(--border);border-radius:3px;padding:4px;font-family:inherit;font-size:11px">
+      </div>
+    </div>
+
+    <div style="display:flex;gap:6px;margin-bottom:10px">
+      <button onclick="saveScannerConfig()" style="flex:1;background:var(--panel-2);color:var(--text);border:1px solid var(--border);border-radius:3px;padding:8px;cursor:pointer;font-size:11px">Save config</button>
+      <button onclick="runScanner()" class="primary" style="flex:2;background:var(--gold);color:#080600;border:none;border-radius:3px;padding:8px;font-weight:700;cursor:pointer">Scan now</button>
+    </div>
+
+    <div id="scan-results"></div>
+  `;
+  // Default range = month (7d is also common; let's default month which covers a league-ish window)
+  state.scanTimeRange = state.scanTimeRange || 'month';
+  highlightScanRange();
+  document.querySelectorAll('.scan-t-btn').forEach(b => {
+    b.onclick = () => {
+      state.scanTimeRange = b.dataset.t;
+      $('scan-custom').style.display = (b.dataset.t === 'custom') ? 'flex' : 'none';
+      highlightScanRange();
+    };
+  });
+}
+
+function highlightScanRange() {
+  document.querySelectorAll('.scan-t-btn').forEach(b => {
+    const on = b.dataset.t === state.scanTimeRange;
+    b.style.background = on ? 'var(--gold-dim)' : 'var(--panel-2)';
+    b.style.color = on ? '#080600' : 'var(--text)';
+    b.style.borderColor = on ? 'var(--gold-dim)' : 'var(--border)';
+    b.style.fontWeight = on ? '700' : 'normal';
+  });
+}
+
+async function saveScannerConfig() {
+  const subs = $('scan-subs').value.split('\n').map(s => s.trim()).filter(Boolean);
+  const kws = $('scan-kws').value.split('\n').map(s => s.trim()).filter(Boolean);
+  const r = await fetch('/v2/api/scanner/config', {
+    method: 'PUT', credentials: 'same-origin',
+    headers: {'Content-Type':'application/json'},
+    body: JSON.stringify({build_id: state.build.id, subreddits: subs, keywords: kws}),
+  });
+  if (!r.ok) { alert('save failed'); return; }
+  state.scannerCfg = {...state.scannerCfg, subreddits: subs, keywords: kws, defaults_used: false};
+}
+window.saveScannerConfig = saveScannerConfig;
+
+async function runScanner() {
+  await saveScannerConfig();
+  const out = $('scan-results');
+  out.innerHTML = '<div style="color:var(--muted);padding:20px;text-align:center">Scanning Reddit…</div>';
+
+  const body = {build_id: state.build.id};
+  body.sources = [...document.querySelectorAll('.scan-src:checked')].map(x => x.value);
+  if (!body.sources.length) body.sources = ['reddit'];
+  const modeRadio = document.querySelector('input[name="scan-mode"]:checked');
+  body.mode = modeRadio ? modeRadio.value : 'or';
+  const t = state.scanTimeRange || 'month';
+  if (t === 'custom') {
+    const fromStr = $('scan-from').value;
+    const toStr = $('scan-to').value;
+    if (!fromStr && !toStr) {
+      out.innerHTML = '<div style="color:var(--red);padding:10px">Pick at least one custom date.</div>';
+      return;
+    }
+    if (fromStr) body.from_ts = Math.floor(new Date(fromStr + 'T00:00:00').getTime() / 1000);
+    if (toStr)   body.to_ts   = Math.floor(new Date(toStr   + 'T23:59:59').getTime() / 1000);
+    body.time_range = 'all';
+  } else {
+    body.time_range = t;
+  }
+
+  const r = await fetch('/v2/api/scanner/scan', {
+    method: 'POST', credentials: 'same-origin',
+    headers: {'Content-Type':'application/json'},
+    body: JSON.stringify(body),
+  });
+  const d = await r.json();
+  if (!r.ok) { out.innerHTML = `<div style="color:var(--red)">${escHtml(d.error || 'failed')}</div>`; return; }
+
+  const ytLinks = (d.youtube_searches || []).map(y =>
+    `<a href="${escHtml(y.url)}" target="_blank" rel="noopener noreferrer"
+        style="display:inline-block;background:var(--panel-2);color:var(--text);border:1px solid var(--border);border-radius:3px;padding:4px 10px;font-size:11px;text-decoration:none;margin-right:4px;margin-bottom:4px">
+       ▶ YouTube: ${escHtml(y.keyword)} ↗
+     </a>`
+  ).join('');
+
+  const srcColor = {reddit: '#ff4500', youtube: '#ff0000'};
+  const items = (d.items || []).map(it => {
+    const src = it.source || 'reddit';
+    const age = it.created_utc
+      ? Math.round((Date.now() - it.created_utc * 1000) / (1000 * 3600 * 24))
+      : null;
+    const ageStr = age != null ? (age === 0 ? 'today' : age === 1 ? '1d' : age < 7 ? `${age}d` : age < 30 ? `${Math.round(age/7)}w` : `${Math.round(age/30)}mo`) : '';
+    const kwChips = (it.matched_keywords || []).map(k =>
+      `<span style="background:var(--border);color:var(--muted);font-size:9px;padding:0 4px;border-radius:2px;margin-left:4px">${escHtml(k)}</span>`
+    ).join('');
+    const srcTag = `<span style="background:${srcColor[src] || 'var(--border)'};color:#fff;font-size:9px;padding:1px 5px;border-radius:2px;margin-right:6px;text-transform:uppercase">${escHtml(src)}</span>`;
+    let meta = '';
+    if (src === 'reddit') {
+      meta = `r/${escHtml(it.subreddit || '')} · ${escHtml(it.author || '')} · ${it.score || 0}↑ · ${it.num_comments || 0}💬 · ${ageStr}`;
+    } else if (src === 'youtube') {
+      meta = `▶ ${escHtml(it.channel || '')}${it.published ? ' · ' + escHtml(it.published) : ''}`;
+    }
+    return `
+      <a href="${escHtml(it.permalink)}" target="_blank" rel="noopener noreferrer"
+         style="display:block;text-decoration:none;padding:8px 10px;border-left:3px solid ${srcColor[src] || 'var(--gold-dim)'};background:var(--panel);border-radius:0 3px 3px 0;margin-bottom:6px">
+        <div style="display:flex;justify-content:space-between;gap:8px;align-items:baseline">
+          <span style="color:var(--text);font-weight:600;font-size:12px">${srcTag}${escHtml(it.title)}${kwChips}</span>
+        </div>
+        <div style="color:var(--muted);font-size:10px;margin-top:2px">${meta}</div>
+      </a>
+    `;
+  }).join('') || '<div style="color:var(--muted);padding:20px;text-align:center">No results.</div>';
+
+  const errBlock = (d.errors && d.errors.length)
+    ? `<div style="background:rgba(224,96,80,0.1);border:1px solid var(--red);border-radius:3px;padding:8px 10px;margin-bottom:8px">
+         <div style="color:var(--red);font-size:11px;font-weight:700;margin-bottom:4px">Errors (${d.errors.length})</div>
+         ${d.errors.map(e => `<div style="color:var(--red);font-size:10px">${escHtml(e)}</div>`).join('')}
+       </div>`
+    : '';
+  out.innerHTML = `
+    <div style="color:var(--muted);font-size:10px;margin-bottom:6px">
+      ${d.items.length} results from ${d.searched} searches
+    </div>
+    ${errBlock}
+    <div style="margin-bottom:10px">${ytLinks}</div>
+    <div>${items}</div>
+  `;
+}
+window.runScanner = runScanner;
+
+// --- Profit tab (jbaker-only) -----------------------------------------
+async function renderProfitTab() {
+  const el = $('tab-content-profit');
+  if (state.user !== 'jbaker') {
+    el.innerHTML = '<div class="empty-state">Profit tab is private to jbaker.</div>';
+    return;
+  }
+  el.innerHTML = '<div class="empty-state"><h2>Loading…</h2></div>';
+  const [pl, uq] = await Promise.all([
+    api('/v2/api/profit/list'),
+    api('/v2/api/profit/uniques'),
+  ]);
+  state.profit = pl;
+  state.profitCatalog = uq.uniques || [];
+
+  const rows = (pl.uniques || []).map(n => `
+    <div style="display:flex;align-items:center;gap:8px;padding:4px 0">
+      <span style="flex:1;color:var(--text)">${escHtml(n)}</span>
+      <button class="btn-del-profit" data-name="${escHtml(n)}"
+        style="background:transparent;color:var(--muted);border:1px solid var(--border);border-radius:3px;padding:2px 8px;font-size:11px;cursor:pointer">×</button>
+    </div>
+  `).join('') || '<div style="color:var(--muted);padding:10px">List is empty.</div>';
+
+  el.innerHTML = `
+    <h3>Profit Filter — Unique shortlist</h3>
+    <p style="color:var(--muted);font-size:11px;margin-bottom:12px">
+      Uniques on this list get a bright yellow loud-alert highlight injected into your loot filter.
+      Original filter is never modified.
+    </p>
+
+    <div style="margin-bottom:14px">
+      <div style="color:var(--gold);font-size:10px;text-transform:uppercase;letter-spacing:1px;margin-bottom:4px">Add from catalog</div>
+      <div style="display:flex;gap:6px">
+        <input id="profit-search" placeholder="Type to filter ${state.profitCatalog.length} uniques"
+          style="flex:1;background:var(--panel-2);color:var(--text);border:1px solid var(--border);border-radius:3px;padding:6px 8px;font-size:12px">
+      </div>
+      <div id="profit-search-results" style="max-height:160px;overflow:auto;margin-top:4px;border:1px solid var(--border);background:var(--panel);border-radius:3px;display:none"></div>
+    </div>
+
+    <div style="margin-bottom:14px;border-top:1px dashed var(--border);padding-top:10px">
+      <div style="color:var(--gold);font-size:10px;text-transform:uppercase;letter-spacing:1px;margin-bottom:4px">Bulk import from builds</div>
+      <div style="color:var(--muted);font-size:10px;margin-bottom:4px">
+        Paste <b>pobb.in</b> URLs or raw <b>PoB codes</b> (one per line). Uniques worn by those builds get extracted.
+      </div>
+      <textarea id="bulk-import-inputs" placeholder="https://pobb.in/abc&#10;https://pobb.in/xyz&#10;eAHtfW..." style="width:100%;min-height:80px;font-family:monospace;font-size:10px;background:var(--panel-2);color:var(--text);border:1px solid var(--border);border-radius:3px;padding:6px 8px"></textarea>
+      <div style="display:flex;gap:6px;margin-top:4px">
+        <button id="btn-bulk-scan" onclick="bulkImportScan()" style="flex:1;background:var(--panel-2);color:var(--text);border:1px solid var(--border);border-radius:3px;padding:6px;cursor:pointer;font-size:11px">Scan inputs</button>
+      </div>
+      <div id="bulk-import-results" style="margin-top:6px"></div>
+    </div>
+
+    <div style="background:var(--panel);border:1px solid var(--border);border-radius:3px;padding:10px 12px;margin-bottom:14px">
+      <div style="color:var(--gold);font-size:10px;text-transform:uppercase;letter-spacing:1px;margin-bottom:6px">
+        Current list (${(pl.uniques || []).length})
+      </div>
+      ${rows}
+    </div>
+
+    <div style="background:var(--panel);border:1px solid var(--border);border-radius:3px;padding:10px 12px;font-size:11px">
+      <div><b style="color:var(--text)">Source filter:</b> <code style="color:var(--muted)">${escHtml(pl.source_path)}</code> ${pl.source_exists ? '' : '<span style="color:var(--red)">(missing!)</span>'}</div>
+      <div><b style="color:var(--text)">Output:</b> <code style="color:var(--muted)">${escHtml(pl.dest_path)}</code> ${pl.last_built ? '· last built ' + new Date(pl.last_built).toLocaleString() : ''}</div>
+    </div>
+
+    <div style="display:flex;gap:6px;margin-top:10px">
+      <button onclick="openRareWalkthrough()" style="flex:1;background:var(--panel-2);color:var(--text);border:1px solid var(--border);border-radius:3px;padding:8px;font-size:11px;cursor:pointer">
+        Walk through build rares
+      </button>
+    </div>
+
+    <div style="display:flex;gap:6px;margin-top:6px">
+      <button id="btn-build-filter" class="primary" style="flex:3;background:var(--gold);color:#080600;border:none;border-radius:3px;padding:10px;font-weight:700;cursor:pointer">
+        Build profit filter
+      </button>
+      <button id="btn-validate-filter" onclick="validateProfitFilter()" style="flex:1;background:var(--panel-2);color:var(--text);border:1px solid var(--border);border-radius:3px;padding:10px;font-weight:700;cursor:pointer">
+        Validate
+      </button>
+    </div>
+    <div id="profit-status" style="color:var(--muted);font-size:11px;margin-top:8px;min-height:14px"></div>
+  `;
+
+  $('profit-search').oninput = onProfitSearch;
+  $('btn-build-filter').onclick = buildProfitFilter;
+}
+
+function onProfitSearch(e) {
+  const q = (e.target.value || '').toLowerCase().trim();
+  const results = $('profit-search-results');
+  if (q.length < 2) { results.style.display = 'none'; return; }
+  const cur = new Set((state.profit.uniques || []).map(n => n.toLowerCase()));
+  const matches = state.profitCatalog
+    .filter(u => u.name.toLowerCase().includes(q) || u.type.toLowerCase().includes(q))
+    .filter(u => !cur.has(u.name.toLowerCase()))
+    .slice(0, 30);
+  if (!matches.length) {
+    results.style.display = 'block';
+    results.innerHTML = '<div style="padding:6px 10px;color:var(--muted);font-size:11px">No matches.</div>';
+    return;
+  }
+  results.style.display = 'block';
+  results.innerHTML = matches.map(u => `
+    <div class="profit-add-row" data-name="${escHtml(u.name)}"
+      style="padding:5px 10px;cursor:pointer;border-bottom:1px dashed var(--border);display:flex;justify-content:space-between;font-size:11px">
+      <span style="color:var(--text)">${escHtml(u.name)}</span>
+      <span style="color:var(--muted)">${escHtml(u.type)}</span>
+    </div>
+  `).join('');
+}
+
+async function updateProfitList(names) {
+  const r = await fetch('/v2/api/profit/list', {
+    method: 'PUT', credentials: 'same-origin',
+    headers: {'Content-Type':'application/json'},
+    body: JSON.stringify({uniques: names}),
+  });
+  if (!r.ok) {
+    const d = await r.json().catch(() => ({}));
+    alert(d.error || 'Failed to save list');
+    return false;
+  }
+  await renderProfitTab();
+  return true;
+}
+
+async function buildProfitFilter() {
+  const status = $('profit-status');
+  const btn = $('btn-build-filter');
+  status.textContent = 'Building…';
+  btn.disabled = true;
+  try {
+    const r = await fetch('/v2/api/profit/build-filter', {method: 'POST', credentials: 'same-origin'});
+    const d = await r.json();
+    if (!r.ok) { status.textContent = d.error || 'Build failed'; status.style.color = 'var(--red)'; return; }
+    const v = d.validation || {};
+    const h = d.hierarchy || {};
+    const ok = (v.errors || 0) === 0;
+    const bytesK = (d.bytes_written / 1024).toFixed(1);
+    const color = ok ? 'var(--gold)' : 'var(--red)';
+    const sampleErr = (v.sample_errors || []).map(e =>
+      `<div style="color:var(--red);font-size:10px;padding-left:8px">line ${e.line}: ${escHtml(e.msg)}</div>`
+    ).join('');
+    const buildSummary = {
+      build_count: d.build_count || 0,
+      profit_count: d.profit_count || 0,
+      rare_count: d.rare_count || 0,
+      bytes: d.bytes_written || 0,
+      errors: v.errors || 0,
+    };
+    window._lastFilterBuild = buildSummary;
+    status.innerHTML = `
+      <div style="color:${color};font-weight:700">
+        ${ok ? '✓ Built & validated' : '⚠ Built with errors'} — ${bytesK} KB
+      </div>
+      <div style="color:var(--muted);font-size:11px;margin-top:3px">
+        <span style="color:#64c8ff">${buildSummary.build_count} build uniques</span>
+        + <span style="color:var(--gold)">${buildSummary.profit_count} profit uniques</span>
+        + <span style="color:#e6e650">${buildSummary.rare_count} rare bases</span>
+        &nbsp;·&nbsp; ${v.total_lines || '?'} lines · ${v.blocks || '?'} rule blocks
+        · <b style="color:${ok ? 'var(--gold)' : 'var(--red)'}">${buildSummary.errors} errors</b>
+      </div>
+      ${sampleErr}
+      <div style="color:var(--muted);font-size:11px;margin-top:6px;padding:6px 8px;border-left:2px solid var(--gold-dim);background:rgba(122,96,48,0.05)">
+        <b style="color:var(--text)">Hierarchy:</b> profit block at line ${h.profit_block_line || '?'}.
+        ${escHtml(h.explanation || '')}
+      </div>
+      ${ok ? `
+        <button onclick="notifyMattFilterBuild()" style="margin-top:8px;width:100%;background:var(--panel-2);color:var(--text);border:1px solid var(--gold-dim);border-radius:3px;padding:8px;font-size:11px;cursor:pointer">
+          📢 Post update to Notes so Matt knows to re-download
+        </button>
+        <span id="notify-matt-status" style="display:block;margin-top:4px;font-size:10px;color:var(--muted);min-height:12px"></span>
+      ` : ''}`;
+    await renderProfitTab();
+  } finally {
+    btn.disabled = false;
+  }
+}
+
+async function validateProfitFilter() {
+  const status = $('profit-status');
+  const btn = $('btn-validate-filter');
+  if (btn) { btn.disabled = true; btn.textContent = 'Validating…'; }
+  try {
+    const r = await fetch('/v2/api/profit/validate', {method: 'POST', credentials: 'same-origin'});
+    const d = await r.json();
+    if (!r.ok) { status.textContent = d.error || 'Validate failed'; status.style.color = 'var(--red)'; return; }
+    const errors = d.errors || [];
+    const h = d.hierarchy || {};
+    const color = d.ok ? 'var(--gold)' : 'var(--red)';
+    const errList = errors.map(e =>
+      `<div style="color:var(--red);font-size:10px;padding-left:8px">line ${e.line}: ${escHtml(e.msg)} — <code>${escHtml(e.text)}</code></div>`
+    ).join('');
+    status.innerHTML = `
+      <div style="color:${color};font-weight:700">
+        ${d.ok ? '✓ Valid' : `⚠ ${errors.length} errors`} — ${escHtml(d.summary)}
+      </div>
+      ${errList}
+      <div style="color:var(--muted);font-size:11px;margin-top:6px;padding:6px 8px;border-left:2px solid var(--gold-dim);background:rgba(122,96,48,0.05)">
+        <b style="color:var(--text)">Hierarchy:</b> ${escHtml(h.explanation || '')}
+      </div>`;
+  } finally {
+    if (btn) { btn.disabled = false; btn.textContent = 'Validate'; }
+  }
+}
+window.validateProfitFilter = validateProfitFilter;
+
+async function notifyMattFilterBuild() {
+  const summary = window._lastFilterBuild || {};
+  const stamp = new Date().toLocaleString(undefined, {
+    month: 'short', day: 'numeric', hour: 'numeric', minute: '2-digit'
+  });
+  const kb = ((summary.bytes || 0) / 1024).toFixed(1);
+  const text = `📦 Profit filter rebuilt @ ${stamp}
+• ${summary.build_count || 0} build uniques (cyan)
+• ${summary.profit_count || 0} profit uniques (gold)
+• ${summary.rare_count || 0} rare bases (amber)
+• ${kb} KB · ${summary.errors ? summary.errors + ' errors' : 'validated clean'}
+
+→ Download from Files → Download`;
+
+  const statusEl = $('notify-matt-status');
+  if (statusEl) statusEl.textContent = 'Posting...';
+  try {
+    const r = await fetch('/api/notes', {
+      method: 'POST', credentials: 'same-origin',
+      headers: {'Content-Type':'application/json'},
+      body: JSON.stringify({text}),
+    });
+    if (!r.ok) throw new Error('HTTP ' + r.status);
+    // Find the just-created note and pin it (newest first in server response)
+    const notes = await (await fetch('/api/notes', {credentials:'same-origin'})).json();
+    const latest = (notes.notes || [])[0];
+    if (latest && latest.user === state.user) {
+      await fetch(`/api/notes/${latest.id}`, {
+        method: 'PATCH', credentials: 'same-origin',
+        headers: {'Content-Type':'application/json'},
+        body: JSON.stringify({pinned: true}),
+      });
+    }
+    if (statusEl) {
+      statusEl.style.color = 'var(--gold)';
+      statusEl.textContent = '✓ Posted & pinned to Notes — Matt will see the badge';
+    }
+    // Refresh notes so jbaker also sees it locally
+    if (typeof refreshNotes === 'function') refreshNotes();
+  } catch (e) {
+    if (statusEl) {
+      statusEl.style.color = 'var(--red)';
+      statusEl.textContent = 'Post failed: ' + (e.message || e);
+    }
+  }
+}
+window.notifyMattFilterBuild = notifyMattFilterBuild;
+
+async function bulkImportScan() {
+  const inputs = $('bulk-import-inputs').value;
+  if (!inputs.trim()) return;
+  const btn = $('btn-bulk-scan');
+  const resDiv = $('bulk-import-results');
+  btn.disabled = true; btn.textContent = 'Scanning…';
+  resDiv.innerHTML = '<div style="color:var(--muted);padding:4px">Parsing builds…</div>';
+  try {
+    const r = await fetch('/v2/api/profit/extract-from-builds', {
+      method: 'POST', credentials: 'same-origin',
+      headers: {'Content-Type':'application/json'},
+      body: JSON.stringify({inputs}),
+    });
+    const d = await r.json();
+    if (!r.ok) { resDiv.innerHTML = `<div style="color:var(--red)">${escHtml(d.error || 'failed')}</div>`; return; }
+    state.bulkAggregated = (d.aggregated_uniques || []).map(x => x.name);
+    const perInput = (d.per_input || []).map(e => `
+      <div style="font-size:10px;padding:2px 0;color:${e.ok ? 'var(--text)' : 'var(--red)'}">
+        ${e.ok ? '✓' : '✗'} <code>${escHtml(e.input)}</code>
+        ${e.ok
+          ? ` — ${escHtml(e.class)}${e.ascendancy ? '/' + escHtml(e.ascendancy) : ''}, ${e.unique_names.length} uniques`
+          : ` — ${escHtml(e.error)}`}
+      </div>
+    `).join('');
+    const aggRows = (d.aggregated_uniques || []).slice(0, 60).map(a => `
+      <div style="display:flex;justify-content:space-between;font-size:11px;padding:2px 4px">
+        <span style="color:var(--text)">${escHtml(a.name)}</span>
+        <span style="color:var(--muted)">×${a.count}</span>
+      </div>
+    `).join('') || '<div style="color:var(--muted);padding:6px">no uniques found</div>';
+    resDiv.innerHTML = `
+      <div style="color:var(--muted);font-size:10px;margin:6px 0 4px">${d.parsed_count} parsed / ${d.skipped_count} skipped</div>
+      ${perInput}
+      <div style="background:var(--panel);border:1px solid var(--border);border-radius:3px;padding:6px;margin-top:8px">
+        <div style="color:var(--gold);font-size:10px;text-transform:uppercase;letter-spacing:1px;margin-bottom:4px">
+          Aggregated uniques (${(d.aggregated_uniques || []).length})
+        </div>
+        ${aggRows}
+      </div>
+      <div style="display:flex;gap:6px;margin-top:6px">
+        <button onclick="bulkImportApply('replace')" style="flex:1;background:var(--gold);color:#080600;border:none;border-radius:3px;padding:6px;font-size:11px;font-weight:700;cursor:pointer">Replace list</button>
+        <button onclick="bulkImportApply('merge')" style="flex:1;background:var(--panel-2);color:var(--text);border:1px solid var(--border);border-radius:3px;padding:6px;font-size:11px;cursor:pointer">Merge into list</button>
+      </div>
+    `;
+  } finally {
+    btn.disabled = false; btn.textContent = 'Scan inputs';
+  }
+}
+window.bulkImportScan = bulkImportScan;
+
+async function bulkImportApply(mode) {
+  if (!state.bulkAggregated || !state.bulkAggregated.length) return;
+  const current = new Set(state.profit.uniques || []);
+  let names;
+  if (mode === 'replace') {
+    names = state.bulkAggregated;
+  } else {
+    for (const n of state.bulkAggregated) current.add(n);
+    names = [...current];
+  }
+  await updateProfitList(names);
+}
+window.bulkImportApply = bulkImportApply;
+
+// --- Rare-gear walkthrough --------------------------------------------
+async function openRareWalkthrough() {
+  try {
+    const r = await fetch('/v2/api/profit/rare-walkthrough', {credentials: 'same-origin'});
+    const d = await r.json();
+    if (!r.ok) { alert(d.error || 'Failed to load'); return; }
+    if (!d.rares || !d.rares.length) { alert('No rare items on the active build.'); return; }
+    state.rareWt = {
+      build_id: d.build_id,
+      rares: d.rares,
+      enabled: new Set(d.enabled_slots || []),
+      idx: 0,
+    };
+    $('rare-wt-title').textContent = `Rare Walkthrough — ${d.label}`;
+    $('rare-walkthrough-modal').classList.add('open');
+    renderRareWt();
+  } catch (e) { alert('Error: ' + e.message); }
+}
+window.openRareWalkthrough = openRareWalkthrough;
+
+function renderRareWt() {
+  const wt = state.rareWt; if (!wt) return;
+  const cur = wt.rares[wt.idx];
+  if (!cur) {
+    $('rare-wt-body').innerHTML = '<div class="empty-state"><h2>Done ✓</h2><p>Click <b>Done</b> to save and close. Then rebuild the filter.</p></div>';
+    $('rare-wt-progress').textContent = `${wt.idx} / ${wt.rares.length}`;
+    return;
+  }
+  $('rare-wt-progress').textContent = `${wt.idx + 1} / ${wt.rares.length} · ${wt.enabled.size} approved so far`;
+  const modsHtml = (cur.mods || []).map(m => {
+    const color = m.rank === 'must' ? 'var(--gold)' : (m.rank === 'ignore' ? 'var(--muted)' : 'var(--text)');
+    const strike = m.rank === 'ignore' ? 'text-decoration:line-through;opacity:0.5' : '';
+    const tag = m.rank === 'must'
+      ? '<span style="background:var(--gold);color:#080600;font-size:9px;padding:0 4px;border-radius:2px;margin-right:4px;font-weight:700">MUST</span>'
+      : (m.rank === 'ignore' ? '<span style="background:#533;color:#aaa;font-size:9px;padding:0 4px;border-radius:2px;margin-right:4px">IGN</span>' : '');
+    return `<div style="font-size:11px;line-height:1.6;color:${color};${strike}">${tag}${escHtml(m.text)}</div>`;
+  }).join('');
+  const approved = wt.enabled.has(cur.slot);
+  $('rare-wt-body').innerHTML = `
+    <div style="background:var(--panel);border:1px solid var(--border);border-radius:3px;padding:12px;margin-bottom:10px">
+      <div style="display:flex;justify-content:space-between;margin-bottom:6px">
+        <span style="color:var(--muted);font-size:10px;text-transform:uppercase;letter-spacing:1px">${escHtml(cur.slot)}</span>
+        ${approved ? '<span style="background:var(--gold);color:#080600;font-size:10px;padding:2px 8px;border-radius:2px;font-weight:700">APPROVED</span>' : ''}
+      </div>
+      <div style="color:var(--rare);font-weight:700;font-size:14px">${escHtml(cur.name || '(unnamed)')}</div>
+      <div style="color:var(--muted);font-size:11px;margin-bottom:8px">${escHtml(cur.base || '')} ${cur.item_level ? '· ilvl ' + cur.item_level : ''}</div>
+      <div>${modsHtml}</div>
+    </div>
+    <div style="color:var(--muted);font-size:11px">
+      <b style="color:var(--text)">Add as-is</b> marks this slot's base for the rare highlight section. Refine must/nice/ignore on the <b>Gear tab</b> — rankings tagged MUST get listed as a comment in the filter (PoE2 syntax doesn't support numeric mod filtering).
+    </div>
+  `;
+}
+
+async function _persistRareSlots() {
+  const wt = state.rareWt;
+  await fetch('/v2/api/profit/rare-slots', {
+    method: 'PUT', credentials: 'same-origin',
+    headers: {'Content-Type':'application/json'},
+    body: JSON.stringify({build_id: wt.build_id, slots: [...wt.enabled]}),
+  });
+}
+
+async function rareWtAdd() {
+  const wt = state.rareWt; if (!wt) return;
+  const cur = wt.rares[wt.idx]; if (!cur) return;
+  wt.enabled.add(cur.slot);
+  await _persistRareSlots();
+  wt.idx++;
+  renderRareWt();
+}
+async function rareWtIgnore() {
+  const wt = state.rareWt; if (!wt) return;
+  const cur = wt.rares[wt.idx]; if (!cur) return;
+  wt.enabled.delete(cur.slot);
+  await _persistRareSlots();
+  wt.idx++;
+  renderRareWt();
+}
+function rareWtPrev() {
+  const wt = state.rareWt; if (!wt) return;
+  if (wt.idx > 0) { wt.idx--; renderRareWt(); }
+}
+function closeRareWt() {
+  $('rare-walkthrough-modal').classList.remove('open');
+}
+window.rareWtAdd = rareWtAdd;
+window.rareWtIgnore = rareWtIgnore;
+window.rareWtPrev = rareWtPrev;
+window.closeRareWt = closeRareWt;
+
+// Delegate: profit tab clicks
+document.addEventListener('click', async (e) => {
+  if (e.target.classList.contains('profit-add-row') || e.target.parentElement?.classList.contains('profit-add-row')) {
+    const row = e.target.classList.contains('profit-add-row') ? e.target : e.target.parentElement;
+    const name = row.dataset.name;
+    const cur = state.profit.uniques || [];
+    if (!cur.includes(name)) await updateProfitList([...cur, name]);
+  } else if (e.target.classList.contains('btn-del-profit')) {
+    const name = e.target.dataset.name;
+    const cur = state.profit.uniques || [];
+    await updateProfitList(cur.filter(n => n !== name));
+  }
+});
+
+// Mod-ranking state lives on the slot's default variant. For MVP we keep it
+// on an in-memory per-slot dict `state.rankings[slot]` and lazily persist to
+// a slot-level auto-variant. Default rank for a mod without an entry = 'nice'.
+function getRankings(slot) {
+  state.rankings = state.rankings || {};
+  return state.rankings[slot] || {};
+}
+function setRanking(slot, modHash, rank) {
+  state.rankings = state.rankings || {};
+  const cur = state.rankings[slot] || {};
+  cur[modHash] = rank;
+  state.rankings[slot] = cur;
+}
+function getRankValues(slot) {
+  state.rank_values = state.rank_values || {};
+  return state.rank_values[slot] || {};
+}
+function setRankValue(slot, modHash, which, val) {
+  state.rank_values = state.rank_values || {};
+  const cur = state.rank_values[slot] || {};
+  const entry = cur[modHash] || {};
+  if (val === '' || val === null) delete entry[which];
+  else entry[which] = val;
+  if (Object.keys(entry).length) cur[modHash] = entry;
+  else delete cur[modHash];
+  state.rank_values[slot] = cur;
+}
+// Extract first number from mod text — used to seed the min default.
+function firstNumberIn(text) {
+  const m = String(text || '').match(/-?\d+(?:\.\d+)?/);
+  return m ? m[0] : '';
+}
+
+function slotCard(slot, it) {
+  const div = document.createElement('div');
+  div.className = 'slot';
+  const rarity = it.rarity || '';
+  const ilvl = it.item_level ? `<span class="ilvl">i${it.item_level}</span>` : '';
+  const nameLine = it.name
+    ? `<div class="item-name rarity-${rarity}">${ilvl}${escHtml(it.name)}</div>` : '';
+  const base = `<div class="item-base">${escHtml(it.base || '')}</div>`;
+
+  const rankings = getRankings(slot);
+  const rankVals = getRankValues(slot);
+  const canRank = state.user === 'jbaker';
+  const modsHtml = (it.mods || []).map(m => {
+    const r = rankings[m.hash] || 'nice';
+    const tags = (m.tags || []).map(t => `<span class="tag">${escHtml(t)}</span>`).join('');
+    const buttons = canRank
+      ? `<span class="rank-buttons">` +
+          ['must','nice','ignore'].map(v =>
+            `<button class="rank-btn${r===v?' active':''}" data-r="${v}" ` +
+            `data-slot="${escHtml(slot)}" data-hash="${escHtml(m.hash)}" ` +
+            `title="${v}">${v[0].toUpperCase()}</button>`
+          ).join('') +
+        `</span>`
+      : '';
+    // min/max row appears only for 'must' mods
+    const vals = rankVals[m.hash] || {};
+    const defaultMin = firstNumberIn(m.text);
+    const valueInputs = (r === 'must' && canRank)
+      ? `<div class="value-inputs">
+           <label>min</label>
+           <input type="number" step="any" class="mod-min" data-slot="${escHtml(slot)}" data-hash="${escHtml(m.hash)}"
+             value="${escHtml(vals.min !== undefined ? vals.min : defaultMin)}" placeholder="${escHtml(defaultMin)}">
+           <label>max</label>
+           <input type="number" step="any" class="mod-max" data-slot="${escHtml(slot)}" data-hash="${escHtml(m.hash)}"
+             value="${escHtml(vals.max !== undefined ? vals.max : '')}" placeholder="any">
+         </div>`
+      : '';
+    return `<div class="mod-row" data-r="${r}">${buttons}<span class="mod ${m.kind}">${tags}${escHtml(m.text)}</span></div>${valueInputs}`;
+  }).join('');
+
+  const tradeBtn = `<button class="trade-btn btn-trade" data-slot="${escHtml(slot)}">Trade ↗</button>`;
+  const slotVariants = (state.variants || []).filter(v => v.slot === slot);
+
+  div.innerHTML =
+    `<div class="slot-header">` +
+      `<span class="slot-name">${escHtml(slot)}</span>` +
+      tradeBtn +
+    `</div>` +
+    nameLine + base +
+    `<div class="mods">${modsHtml}</div>` +
+    (state.user === 'jbaker' || slotVariants.length
+      ? `<div class="variants">` +
+          (slotVariants.length
+            ? `<select data-slot="${escHtml(slot)}" class="variant-select">` +
+                `<option value="">saved searches…</option>` +
+                slotVariants.map(v =>
+                  `<option value="${escHtml(v.trade_url)}">${escHtml(v.label)}</option>`
+                ).join('') +
+              `</select>`
+            : `<span style="flex:1;color:var(--muted);font-size:10px">no saved variants</span>`
+          ) +
+          (state.user === 'jbaker'
+            ? `<button data-slot="${escHtml(slot)}" class="btn-save-variant" title="Save current rankings as a named variant">+ save</button>`
+            : '') +
+        `</div>`
+      : '');
+
+  return div;
+}
+
+async function openAutoTrade(slot) {
+  const rankings = getRankings(slot);
+  const rank_values = getRankValues(slot);
+  const r = await fetch(`/v2/api/builds/${state.build.id}/slots/${encodeURIComponent(slot)}/trade-url`, {
+    method: 'POST', credentials: 'same-origin',
+    headers: {'Content-Type':'application/json'},
+    body: JSON.stringify({league: state.league, rankings, rank_values}),
+  });
+  const d = await r.json();
+  if (!r.ok || !d.url) {
+    alert(d.error || 'Failed to build trade URL');
+    return;
+  }
+  if (d.unmatched_mods && d.unmatched_mods.length) {
+    console.info(`Trade URL: ${d.matched_count} stats matched, ${d.unmatched_mods.length} skipped:`, d.unmatched_mods);
+  }
+  window.open(d.url, '_blank', 'noopener,noreferrer');
+}
+
+function escHtml(s) {
+  return String(s || '').replace(/[&<>"]/g, c => ({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;'}[c]));
+}
+
+// --- Variant handling --------------------------------------------------
+function openVariant(slot) {
+  $('variant-slot').value = slot;
+  $('variant-label').value = '';
+  $('variant-url').value = '';
+  $('variant-notes').value = '';
+  $('variant-err').textContent = '';
+  $('variant-modal').classList.add('open');
+  setTimeout(() => $('variant-label').focus(), 50);
+}
+function closeVariant() { $('variant-modal').classList.remove('open'); }
+async function saveVariant() {
+  const slot = $('variant-slot').value;
+  const label = $('variant-label').value.trim();
+  const trade_url = $('variant-url').value.trim();
+  const notes = $('variant-notes').value.trim();
+  if (!label) { $('variant-err').textContent = 'Label required'; return; }
+  if (!trade_url) { $('variant-err').textContent = 'Trade URL required'; return; }
+  const r = await fetch(`/v2/api/builds/${state.build.id}/variants`, {
+    method: 'POST', credentials: 'same-origin',
+    headers: {'Content-Type':'application/json'},
+    body: JSON.stringify({slot, label, trade_url, notes}),
+  });
+  const d = await r.json();
+  if (!r.ok) { $('variant-err').textContent = d.error || ('HTTP '+r.status); return; }
+  closeVariant();
+  await refreshVariants();
+}
+window.closeVariant = closeVariant;
+window.saveVariant = saveVariant;
+
+// Delegate gear-panel events
+document.addEventListener('click', async (e) => {
+  const t = e.target;
+  if (t.classList.contains('btn-trade')) {
+    await openAutoTrade(t.dataset.slot);
+  } else if (t.classList.contains('btn-save-variant')) {
+    openVariantSave(t.dataset.slot);
+  } else if (t.classList.contains('rank-btn')) {
+    const slot = t.dataset.slot;
+    const hash = t.dataset.hash;
+    const cur = (getRankings(slot)[hash]) || 'nice';
+    const nextRank = (cur === t.dataset.r) ? 'nice' : t.dataset.r;
+    setRanking(slot, hash, nextRank);
+    savePrefs(); // persists state.rankings to user prefs
+    // Cheap local re-render of this slot
+    renderBuild();
+  }
+});
+document.addEventListener('change', (e) => {
+  if (e.target.classList.contains('variant-select')) {
+    const url = e.target.value;
+    if (url) {
+      window.open(url, '_blank', 'noopener,noreferrer');
+      e.target.value = '';
+    }
+  }
+});
+
+// Debounced persistence of min/max inputs
+let _valueTimer = null;
+document.addEventListener('input', (e) => {
+  if (e.target.classList.contains('mod-min') || e.target.classList.contains('mod-max')) {
+    const slot = e.target.dataset.slot;
+    const hash = e.target.dataset.hash;
+    const which = e.target.classList.contains('mod-min') ? 'min' : 'max';
+    setRankValue(slot, hash, which, e.target.value.trim());
+    clearTimeout(_valueTimer);
+    _valueTimer = setTimeout(() => savePrefs(), 300);
+  }
+});
+
+function openVariantSave(slot) {
+  // Fetches current auto trade URL and seeds the variant-save modal.
+  $('variant-slot').value = slot;
+  $('variant-label').value = '';
+  $('variant-url').value = '';
+  $('variant-notes').value = '';
+  $('variant-err').textContent = '';
+  $('variant-modal').classList.add('open');
+  // Pre-build the auto URL asynchronously
+  const rankings = getRankings(slot);
+  const rank_values = getRankValues(slot);
+  fetch(`/v2/api/builds/${state.build.id}/slots/${encodeURIComponent(slot)}/trade-url`, {
+    method: 'POST', credentials: 'same-origin',
+    headers: {'Content-Type':'application/json'},
+    body: JSON.stringify({league: state.league, rankings, rank_values}),
+  }).then(r => r.json()).then(d => {
+    if (d.url) $('variant-url').value = d.url;
+  }).catch(() => {});
+  setTimeout(() => $('variant-label').focus(), 50);
+}
+
+// --- Files + profit filter download -----------------------------------
+function openFiles() {
+  $('files-modal').classList.add('open');
+  refreshFilterInfo();
+  refreshFilesList();
+}
+function closeFiles() { $('files-modal').classList.remove('open'); }
+window.closeFiles = closeFiles;
+
+function humanSize(bytes) {
+  if (bytes < 1024) return bytes + ' B';
+  if (bytes < 1024 * 1024) return (bytes / 1024).toFixed(1) + ' KB';
+  return (bytes / 1024 / 1024).toFixed(2) + ' MB';
+}
+
+async function refreshFilterInfo() {
+  const meta = $('profit-filter-meta');
+  const btn = $('btn-download-profit-filter');
+  const baseSection = $('base-filter-section');
+  const baseMeta = $('base-filter-meta');
+  try {
+    const r = await api('/v2/api/profit/filter-info');
+    if (!r.exists) {
+      meta.innerHTML = '<span style="color:var(--muted)">Not built yet. Jbaker needs to hit <b>Build profit filter</b> on the Profit tab.</span>';
+      if (btn) btn.disabled = true;
+    } else {
+      const when = new Date(r.modified).toLocaleString();
+      meta.innerHTML = `<code style="color:var(--text)">${escHtml(r.name)}</code> · ${humanSize(r.size)} · built ${escHtml(when)}`;
+      if (btn) btn.disabled = false;
+    }
+    // jbaker-only: surface base-filter status
+    if (state.user === 'jbaker' && baseSection) {
+      baseSection.style.display = '';
+      const b = r.base || {};
+      if (!b.exists) {
+        baseMeta.innerHTML = '<span style="color:var(--red)">No base filter uploaded.</span> Drop one from filterblade.xyz below.';
+      } else {
+        const bwhen = b.modified ? new Date(b.modified).toLocaleString() : '?';
+        baseMeta.innerHTML = `<code style="color:var(--text)">${escHtml(b.name)}</code> · ${humanSize(b.size || 0)} · uploaded ${escHtml(bwhen)}`;
+      }
+    }
+  } catch (e) {
+    meta.textContent = 'Error: ' + (e.message || e);
+  }
+}
+window.refreshFilterInfo = refreshFilterInfo;
+
+async function uploadBaseFilter() {
+  const input = $('base-filter-input');
+  const status = $('base-filter-status');
+  const file = input?.files?.[0];
+  if (!file) { status.style.color = 'var(--red)'; status.textContent = 'Pick a .filter file first.'; return; }
+  status.style.color = 'var(--muted)';
+  status.textContent = 'Uploading…';
+  const fd = new FormData();
+  fd.append('file', file);
+  try {
+    const r = await fetch('/v2/api/profit/base-filter-upload', {
+      method: 'POST', credentials: 'same-origin', body: fd,
+    });
+    const d = await r.json();
+    if (!r.ok) {
+      status.style.color = 'var(--red)';
+      status.textContent = d.error || `HTTP ${r.status}`;
+      return;
+    }
+    status.style.color = 'var(--gold)';
+    status.textContent = `✓ Uploaded ${humanSize(d.size)}. Now hit "Build profit filter" on the Profit tab.`;
+    input.value = '';
+    refreshFilterInfo();
+  } catch (e) {
+    status.style.color = 'var(--red)';
+    status.textContent = 'Error: ' + (e.message || e);
+  }
+}
+window.uploadBaseFilter = uploadBaseFilter;
+
+async function downloadProfitFilter() {
+  const status = $('profit-filter-status');
+  status.style.color = 'var(--muted)';
+  status.textContent = 'Downloading…';
+  try {
+    const r = await fetch('/v2/api/profit/filter-download', {credentials: 'same-origin'});
+    if (r.status === 429) {
+      const d = await r.json();
+      status.style.color = 'var(--red)';
+      status.textContent = d.error || 'Rate-limited';
+      return;
+    }
+    if (!r.ok) {
+      const d = await r.json().catch(() => ({error: `HTTP ${r.status}`}));
+      status.style.color = 'var(--red)';
+      status.textContent = d.error || 'Download failed';
+      return;
+    }
+    // Trigger browser save
+    const blob = await r.blob();
+    const cd = r.headers.get('Content-Disposition') || '';
+    const nameMatch = cd.match(/filename="?([^";]+)"?/);
+    const filename = nameMatch ? nameMatch[1] : 'FilterBlade_profit.filter';
+    const url = URL.createObjectURL(blob);
+    const a = document.createElement('a');
+    a.href = url; a.download = filename;
+    document.body.appendChild(a); a.click(); a.remove();
+    URL.revokeObjectURL(url);
+    status.style.color = 'var(--gold)';
+    status.textContent = `✓ Saved ${filename} (${humanSize(blob.size)})`;
+  } catch (e) {
+    status.style.color = 'var(--red)';
+    status.textContent = 'Error: ' + (e.message || e);
+  }
+}
+window.downloadProfitFilter = downloadProfitFilter;
+
+async function refreshFilesList() {
+  const list = $('files-list');
+  list.innerHTML = '<div style="padding:12px;color:var(--muted);text-align:center">Loading…</div>';
+  try {
+    const r = await api('/api/files');
+    const files = r.files || [];
+    if (!files.length) {
+      list.innerHTML = '<div style="padding:16px;color:var(--muted);text-align:center">No shared files yet. Upload one above.</div>';
+      return;
+    }
+    list.innerHTML = files.map(f => `
+      <div style="display:flex;align-items:center;gap:8px;padding:6px 10px;border-bottom:1px solid var(--border)">
+        <div style="flex:1;min-width:0">
+          <div style="color:var(--text);font-weight:600;font-size:12px">${escHtml(f.name)}</div>
+          <div style="color:var(--muted);font-size:10px">${humanSize(f.size)} · ${new Date(f.uploaded).toLocaleString()}</div>
+        </div>
+        <a href="/api/files/${encodeURIComponent(f.name)}" download="${escHtml(f.name)}"
+           style="background:var(--panel-2);color:var(--text);border:1px solid var(--border);border-radius:3px;padding:4px 10px;font-size:11px;text-decoration:none">Download</a>
+        <button onclick="deleteSharedFile('${escHtml(f.name).replace(/'/g, "\\'")}')"
+          style="background:transparent;color:var(--red);border:1px solid var(--border);border-radius:3px;padding:4px 8px;font-size:11px;cursor:pointer">×</button>
+      </div>
+    `).join('');
+  } catch (e) {
+    list.innerHTML = `<div style="padding:12px;color:var(--red)">Error: ${escHtml(e.message || e)}</div>`;
+  }
+}
+window.refreshFilesList = refreshFilesList;
+
+async function uploadFile() {
+  const input = $('files-upload-input');
+  if (!input.files || !input.files[0]) { alert('Pick a file first.'); return; }
+  const fd = new FormData();
+  fd.append('file', input.files[0]);
+  const r = await fetch('/api/files/upload', {method:'POST', credentials:'same-origin', body:fd});
+  if (!r.ok) { alert('Upload failed'); return; }
+  input.value = '';
+  refreshFilesList();
+}
+window.uploadFile = uploadFile;
+
+async function deleteSharedFile(name) {
+  if (!confirm(`Delete ${name}?`)) return;
+  await fetch('/api/files/' + encodeURIComponent(name), {method:'DELETE', credentials:'same-origin'});
+  refreshFilesList();
+}
+window.deleteSharedFile = deleteSharedFile;
+
+// --- News / patch notes ------------------------------------------------
+function openNews() {
+  $('news-modal').classList.add('open');
+  if (state.news && state.news.length) {
+    renderNewsList();
+    return;
+  }
+  $('news-list').innerHTML = '<div style="color:var(--muted);padding:20px;text-align:center">Fetching PoE news feed…</div>';
+  // Watchdog: if refreshNews hasn't updated after 10s, show a timeout error
+  // so the modal never silently stays on "Fetching…" forever.
+  const startedAt = Date.now();
+  const watchdog = setTimeout(() => {
+    if (!state.news || !state.news.length) {
+      $('news-list').innerHTML =
+        '<div style="color:var(--red);padding:20px;text-align:center">'
+        + 'Still fetching after 10s — likely a browser-side error.<br>'
+        + 'Open devtools (F12) → Console, share any errors with jbaker.'
+        + '</div>';
+    }
+  }, 10000);
+  refreshNews(false).finally(() => {
+    clearTimeout(watchdog);
+    if (!state.news || !state.news.length) {
+      // Refresh returned but state still empty — show the (probably red)
+      // error that refreshNews wrote.
+    }
+  });
+}
+function closeNews() { $('news-modal').classList.remove('open'); }
+window.closeNews = closeNews;
+
+function lastNewsSeen() {
+  try { return +(localStorage.getItem('news_last_seen') || 0); } catch { return 0; }
+}
+function markAllNewsRead() {
+  try { localStorage.setItem('news_last_seen', String(Date.now())); } catch {}
+  updateNewsBadge();
+  renderNewsList();
+}
+window.markAllNewsRead = markAllNewsRead;
+
+function updateNewsBadge() {
+  const last = lastNewsSeen();
+  const unread = (state.news || []).filter(n => new Date(n.pub_date).getTime() > last).length;
+  const b = $('news-badge');
+  if (unread > 0) { b.style.display = 'inline-block'; b.textContent = unread; }
+  else { b.style.display = 'none'; }
+}
+
+async function refreshNews(force) {
+  const btn = $('btn-news-refresh');
+  const status = $('news-status');
+  const list = $('news-list');
+  if (btn) { btn.disabled = true; btn.textContent = 'Loading…'; }
+  if (status) status.textContent = 'fetching…';
+  try {
+    const r = await fetch('/v2/api/news' + (force ? '?force=1' : ''), {credentials: 'same-origin'});
+    if (!r.ok) {
+      const txt = await r.text();
+      throw new Error(`HTTP ${r.status}: ${txt.slice(0, 200)}`);
+    }
+    const d = await r.json();
+    state.news = d.items || [];
+    if (status) status.textContent = `${state.news.length} items loaded`;
+  } catch (e) {
+    if (status) status.textContent = 'fetch failed: ' + (e.message || e);
+    if (list && (!state.news || !state.news.length)) {
+      list.innerHTML = `<div style="color:var(--red);padding:20px">Fetch failed: ${escHtml(e.message || String(e))}</div>`;
+    }
+    return;
+  } finally {
+    if (btn) { btn.disabled = false; btn.textContent = 'Refresh'; }
+  }
+  renderNewsList();
+  updateNewsBadge();
+}
+// (removed self-shadowing window.refreshNews shim; the Refresh button calls
+//  refreshNews(true) directly via its onclick attribute.)
+
+function fmtRelativeAge(pubDate) {
+  const ts = new Date(pubDate).getTime();
+  if (!ts) return '';
+  const days = Math.round((Date.now() - ts) / 86400000);
+  if (days <= 0) return 'today';
+  if (days === 1) return 'yesterday';
+  if (days < 7) return `${days}d ago`;
+  if (days < 30) return `${Math.round(days/7)}w ago`;
+  return `${Math.round(days/30)}mo ago`;
+}
+
+function renderNewsList() {
+  const el = $('news-list');
+  const last = lastNewsSeen();
+  let items = (state.news || []);
+  const patchOnly = $('news-only-patches')?.checked;
+  if (patchOnly) items = items.filter(n => n.is_patch_note);
+  if (!items.length) {
+    el.innerHTML = patchOnly
+      ? '<div style="color:var(--muted);padding:30px;text-align:center;font-size:13px">No patch notes in the last 4 weeks. Untick the filter for all news.</div>'
+      : '<div style="color:var(--muted);padding:30px;text-align:center;font-size:13px">No news items in the last 4 weeks. Click Refresh or check back later.</div>';
+    return;
+  }
+
+  // Hero: newest patch note as a big featured card
+  const hero = items.find(n => n.is_patch_note);
+  const rest = items.filter(n => n !== hero);
+
+  const heroHtml = hero ? `
+    <a href="${escHtml(hero.link)}" target="_blank" rel="noopener noreferrer" class="news-hero">
+      <div class="news-hero-tag">📜 Latest Patch · ${escHtml(fmtRelativeAge(hero.pub_date))}</div>
+      <div class="news-hero-title">${escHtml(hero.title)}</div>
+      <div class="news-hero-meta">
+        ${new Date(hero.pub_date).toLocaleDateString(undefined, {weekday:'short', month:'short', day:'numeric'})}${hero.author ? ' · ' + escHtml(hero.author) : ''} · click to read on pathofexile.com ↗
+      </div>
+    </a>
+  ` : '';
+
+  const restHtml = rest.map(n => {
+    const unread = new Date(n.pub_date).getTime() > last;
+    const icon = n.is_patch_note ? '📜' : '📣';
+    const kindClass = n.is_patch_note ? 'patch' : 'news';
+    return `
+      <a href="${escHtml(n.link)}" target="_blank" rel="noopener noreferrer"
+         class="news-row ${kindClass} ${unread ? 'unread' : ''}">
+        <div class="news-row-icon">${icon}</div>
+        <div class="news-row-body">
+          <div class="news-row-title">${escHtml(n.title)}</div>
+          <div class="news-row-meta">
+            ${fmtRelativeAge(n.pub_date)} · ${new Date(n.pub_date).toLocaleDateString(undefined, {month:'short', day:'numeric'})}
+            ${n.author ? ' · ' + escHtml(n.author) : ''}
+          </div>
+        </div>
+        ${unread ? '<div class="news-row-pip"></div>' : ''}
+      </a>
+    `;
+  }).join('');
+
+  el.innerHTML = heroHtml + restHtml;
+  markNotesSeen; // no-op defensive
+}
+
+// --- Notes -------------------------------------------------------------
+function openNotes() {
+  $('notes-modal').classList.add('open');
+  renderNotesList();
+  refreshNotes().catch(e => console.error('openNotes refresh:', e));
+  setTimeout(() => $('notes-new').focus(), 30);
+}
+function closeNotes() { $('notes-modal').classList.remove('open'); }
+window.closeNotes = closeNotes;
+
+async function refreshNotes() {
+  const r = await api('/api/notes');
+  state.notes = r.notes || [];
+  renderNotesList();
+  updateNotesBadge();
+}
+function lastNotesSeen() {
+  try { return +(localStorage.getItem('notes_last_seen') || 0); } catch { return 0; }
+}
+function markNotesSeen() {
+  try { localStorage.setItem('notes_last_seen', String(Date.now())); } catch {}
+  updateNotesBadge();
+}
+function updateNotesBadge() {
+  const last = lastNotesSeen();
+  const unread = (state.notes || []).filter(n => new Date(n.ts).getTime() > last && n.user !== state.user).length;
+  const b = $('notes-badge');
+  if (unread > 0) { b.style.display = 'inline-block'; b.textContent = unread; }
+  else { b.style.display = 'none'; }
+}
+function renderNotesList() {
+  const el = $('notes-list');
+  const sorted = (state.notes || []).slice().sort((a, b) => {
+    if (!!b.pinned !== !!a.pinned) return (b.pinned?1:0) - (a.pinned?1:0);
+    return new Date(b.ts) - new Date(a.ts);
+  });
+  if (!sorted.length) {
+    el.innerHTML = '<div style="color:var(--muted);padding:16px;text-align:center">No notes yet. Post the first one!</div>';
+    return;
+  }
+  el.innerHTML = sorted.map(n => `
+    <div style="border:1px solid ${n.pinned ? 'var(--gold-dim)' : 'var(--border)'};
+                background:${n.pinned ? 'rgba(122,96,48,0.06)' : 'var(--panel)'};
+                border-radius:3px;padding:10px 12px;margin-bottom:8px">
+      <div style="display:flex;justify-content:space-between;margin-bottom:4px">
+        <span style="color:var(--gold);font-weight:700;font-size:11px">
+          ${n.pinned ? '📌 ' : ''}${escHtml(n.user || 'unknown')}
+        </span>
+        <span style="color:var(--muted);font-size:10px">${new Date(n.ts).toLocaleString()}</span>
+      </div>
+      <div style="color:var(--text);font-size:12px;line-height:1.5;white-space:pre-wrap">${escHtml(n.text)}</div>
+      <div style="display:flex;gap:6px;justify-content:flex-end;margin-top:6px">
+        <button onclick="togglePinNote('${n.id}', ${!n.pinned})"
+          style="background:transparent;color:var(--muted);border:1px solid var(--border);border-radius:3px;padding:2px 8px;font-size:10px;cursor:pointer">
+          ${n.pinned ? 'Unpin' : 'Pin'}
+        </button>
+        ${n.user === state.user
+          ? `<button onclick="deleteNote('${n.id}')" style="background:transparent;color:var(--red);border:1px solid var(--border);border-radius:3px;padding:2px 8px;font-size:10px;cursor:pointer">Delete</button>`
+          : ''}
+      </div>
+    </div>
+  `).join('');
+  markNotesSeen();
+}
+async function postNote() {
+  const text = $('notes-new').value.trim();
+  if (!text) return;
+  const btn = $('notes-post-btn');
+  btn.disabled = true;
+  try {
+    const r = await fetch('/api/notes', {
+      method: 'POST', credentials: 'same-origin',
+      headers: {'Content-Type':'application/json'},
+      body: JSON.stringify({text}),
+    });
+    if (!r.ok) { alert('post failed'); return; }
+    $('notes-new').value = '';
+    await refreshNotes();
+  } finally { btn.disabled = false; }
+}
+async function togglePinNote(id, pinned) {
+  await fetch(`/api/notes/${id}`, {
+    method: 'PATCH', credentials: 'same-origin',
+    headers: {'Content-Type':'application/json'},
+    body: JSON.stringify({pinned}),
+  });
+  await refreshNotes();
+}
+async function deleteNote(id) {
+  if (!confirm('Delete this note?')) return;
+  await fetch(`/api/notes/${id}`, {method: 'DELETE', credentials: 'same-origin'});
+  await refreshNotes();
+}
+window.postNote = postNote;
+window.togglePinNote = togglePinNote;
+window.deleteNote = deleteNote;
+// Ctrl+Enter in textarea = post
+document.addEventListener('keydown', (e) => {
+  if (e.target && e.target.id === 'notes-new' && e.ctrlKey && e.key === 'Enter') {
+    e.preventDefault(); postNote();
+  }
+});
+
+// --- Leveling build library -------------------------------------------
+async function openLeveling() {
+  await loadLevelingBuilds();
+  renderLevelingList();
+  $('leveling-modal').classList.add('open');
+}
+function closeLeveling() { $('leveling-modal').classList.remove('open'); }
+window.closeLeveling = closeLeveling;
+
+async function loadLevelingBuilds() {
+  const r = await api('/v2/api/leveling-builds');
+  state.leveling = r.builds || [];
+  state.levelingLastScan = r.last_scan || '';
+}
+
+function renderLevelingList() {
+  const onlyLvl = $('leveling-only-filter').checked;
+  const list = $('leveling-list');
+  const scan = $('leveling-last-scan');
+  scan.textContent = state.levelingLastScan
+    ? `last scan: ${new Date(state.levelingLastScan).toLocaleString()}`
+    : 'never scanned';
+  const items = (state.leveling || []).filter(g => !onlyLvl || g.is_leveling);
+  if (!items.length) {
+    list.innerHTML = '<div style="color:var(--muted);padding:30px;text-align:center">' +
+      (state.user === 'jbaker' ? 'No guides yet — click Re-scan maxroll.' : 'Empty. Wait for jbaker to scan.') +
+      '</div>';
+    return;
+  }
+  // Group by class for legibility
+  const byClass = {};
+  for (const g of items) {
+    const k = g.class || 'Unknown';
+    (byClass[k] = byClass[k] || []).push(g);
+  }
+  const canDelete = state.user === 'jbaker';
+  list.innerHTML = Object.entries(byClass).sort().map(([cls, gs]) => `
+    <div style="margin-bottom:14px">
+      <div style="color:var(--gold);font-size:11px;text-transform:uppercase;letter-spacing:1.5px;margin-bottom:4px;padding-bottom:3px;border-bottom:1px solid var(--border)">
+        ${escHtml(cls)} <span style="color:var(--muted);font-weight:normal">(${gs.length})</span>
+      </div>
+      ${gs.map(g => `
+        <div style="display:flex;align-items:center;gap:8px;padding:6px 2px;border-bottom:1px dashed var(--border)">
+          <div style="flex:1;min-width:0">
+            <div style="color:var(--text);font-weight:600">${escHtml(g.title)}</div>
+            <div style="color:var(--muted);font-size:10px">
+              ${g.ascendancy ? escHtml(g.ascendancy) + ' · ' : ''}${g.is_leveling ? '<span style="color:var(--gold)">leveling</span>' : 'endgame'}
+            </div>
+          </div>
+          <a href="${escHtml(g.url)}" target="_blank" rel="noopener noreferrer"
+             style="background:var(--gold-dim);color:#080600;border:none;border-radius:3px;padding:5px 10px;font-size:11px;font-weight:700;text-decoration:none">
+            Open ↗
+          </a>
+          ${canDelete ? `
+            <button class="btn-del-leveling" data-slug="${escHtml(g.slug)}"
+              style="background:transparent;color:var(--muted);border:1px solid var(--border);border-radius:3px;padding:3px 8px;font-size:10px;cursor:pointer">
+              ×
+            </button>
+          ` : ''}
+        </div>
+      `).join('')}
+    </div>
+  `).join('');
+}
+
+document.addEventListener('click', async (e) => {
+  if (e.target.classList.contains('btn-del-leveling')) {
+    const slug = e.target.dataset.slug;
+    const r = await fetch('/v2/api/leveling-builds/' + encodeURIComponent(slug), {method: 'DELETE', credentials: 'same-origin'});
+    if (r.ok) { await loadLevelingBuilds(); renderLevelingList(); }
+  }
+});
+
+async function saveLevelingAdd() {
+  const err = $('leveling-add-err');
+  err.textContent = '';
+  const pob = $('leveling-add-pob').value.trim();
+  const title = $('leveling-add-title').value.trim();
+  const url = $('leveling-add-url').value.trim();
+  if (!pob && !url) { err.textContent = 'Provide a PoB or a guide URL'; return; }
+  const r = await fetch('/v2/api/leveling-builds', {
+    method: 'POST', credentials: 'same-origin',
+    headers: {'Content-Type':'application/json'},
+    body: JSON.stringify({pob, title, url}),
+  });
+  const d = await r.json();
+  if (!r.ok) { err.textContent = d.error || 'failed'; return; }
+  $('leveling-add-pob').value = '';
+  $('leveling-add-title').value = '';
+  $('leveling-add-url').value = '';
+  $('leveling-add-form').style.display = 'none';
+  await loadLevelingBuilds();
+  renderLevelingList();
+  renderBuildList();
+}
+function cancelLevelingAdd() {
+  $('leveling-add-form').style.display = 'none';
+  $('leveling-add-err').textContent = '';
+}
+window.saveLevelingAdd = saveLevelingAdd;
+window.cancelLevelingAdd = cancelLevelingAdd;
+
+// --- Per-build links (any user can view; jbaker manages) ----------------
+function renderBuildLinks(container, b) {
+  const links = Array.isArray(b.links) ? b.links : [];
+  const canEdit = state.user === 'jbaker' && !b._virtual;
+  const chips = links.map(l => {
+    let host = '';
+    try { host = new URL(l.url).hostname.replace(/^www\./, ''); } catch {}
+    const title = l.title || host || l.url;
+    const remove = canEdit
+      ? `<span class="rm-link" data-id="${escHtml(l.id)}" title="Remove link" style="margin-left:6px;color:var(--muted);cursor:pointer;font-weight:700">×</span>`
+      : '';
+    return `<a href="${escHtml(l.url)}" target="_blank" rel="noopener" title="${escHtml(l.url)}"
+              style="display:inline-flex;align-items:center;gap:4px;background:var(--panel-2);border:1px solid var(--border);border-radius:3px;padding:3px 8px;font-size:11px;text-decoration:none;color:var(--text);margin:2px 4px 2px 0">
+              <span>${escHtml(title)}</span>
+              ${host && l.title ? `<span style="color:var(--muted);font-size:10px">(${escHtml(host)})</span>` : ''}
+            </a>${remove}`;
+  }).join('');
+  const addBtn = canEdit
+    ? `<button id="btn-add-link" style="background:var(--panel-2);color:var(--text);border:1px solid var(--border);border-radius:3px;padding:3px 8px;font-size:11px;cursor:pointer;margin-left:4px">+ Link</button>`
+    : '';
+  const shareUrl = `${location.origin}${location.pathname}#build/${b.id}`;
+  const shareBtn = `<button id="btn-copy-share" title="Copy bookmarkable URL for this build" style="background:var(--panel-2);color:var(--muted);border:1px solid var(--border);border-radius:3px;padding:3px 8px;font-size:11px;cursor:pointer;margin-left:8px">⎘ Share</button>`;
+  container.style.cssText = 'margin:4px 0 12px;display:flex;flex-wrap:wrap;align-items:center;gap:2px';
+  container.innerHTML = chips + addBtn + shareBtn;
+
+  const addBtnEl = container.querySelector('#btn-add-link');
+  if (addBtnEl) addBtnEl.onclick = () => addBuildLink(b.id);
+  const shareBtnEl = container.querySelector('#btn-copy-share');
+  if (shareBtnEl) shareBtnEl.onclick = () => {
+    navigator.clipboard.writeText(shareUrl).then(() => {
+      const orig = shareBtnEl.textContent;
+      shareBtnEl.textContent = '✓ Copied';
+      setTimeout(() => { shareBtnEl.textContent = orig; }, 1200);
+    });
+  };
+  container.querySelectorAll('.rm-link').forEach(el => {
+    el.onclick = (e) => { e.preventDefault(); removeBuildLink(b.id, el.dataset.id); };
+  });
+}
+
+async function addBuildLink(buildId) {
+  const url = prompt('Link URL (https://...):');
+  if (!url) return;
+  const trimmed = url.trim();
+  if (!/^https?:\/\//i.test(trimmed)) { alert('Must start with http:// or https://'); return; }
+  const title = prompt('Label (optional, leave blank to use the hostname):') || '';
+  const r = await fetch(`/v2/api/builds/${buildId}/links`, {
+    method: 'POST', credentials: 'same-origin',
+    headers: {'Content-Type': 'application/json'},
+    body: JSON.stringify({url: trimmed, title: title.trim()}),
+  });
+  const d = await r.json();
+  if (!r.ok) { alert(d.error || ('HTTP ' + r.status)); return; }
+  if (!state.build.links) state.build.links = [];
+  state.build.links.push(d.link);
+  renderBuildLinks(document.getElementById('build-links-bar'), state.build);
+}
+
+async function removeBuildLink(buildId, linkId) {
+  if (!confirm('Remove this link?')) return;
+  const r = await fetch(`/v2/api/builds/${buildId}/links/${linkId}`, {
+    method: 'DELETE', credentials: 'same-origin',
+  });
+  const d = await r.json();
+  if (!r.ok) { alert(d.error || ('HTTP ' + r.status)); return; }
+  state.build.links = (state.build.links || []).filter(l => l.id !== linkId);
+  renderBuildLinks(document.getElementById('build-links-bar'), state.build);
+}
+
+// --- Manage builds (jbaker-only delete) --------------------------------
+function openManageBuilds() {
+  renderManageBuilds();
+  $('manage-builds-modal').classList.add('open');
+}
+function closeManageBuilds() { $('manage-builds-modal').classList.remove('open'); }
+window.closeManageBuilds = closeManageBuilds;
+
+function renderManageBuilds() {
+  const list = $('manage-builds-list');
+  if (!state.builds.length) {
+    list.innerHTML = '<div style="color:var(--muted);padding:20px;text-align:center">No builds yet.</div>';
+    return;
+  }
+  list.innerHTML = state.builds.map(b => `
+    <div style="display:flex;align-items:center;gap:10px;padding:10px;border-bottom:1px solid var(--border)">
+      <div style="flex:1;min-width:0">
+        <div style="font-weight:700;color:var(--text)">${escHtml(b.label)}</div>
+        <div style="font-size:11px;color:var(--muted)">
+          ${escHtml(b.character_class)}${b.ascendancy ? ' / ' + escHtml(b.ascendancy) : ''}
+          · ${escHtml(b.phase)}
+          · ${b.imported_at ? new Date(b.imported_at).toLocaleDateString() : ''}
+          ${b.id === state.activeId ? '· <b style="color:var(--gold)">ACTIVE</b>' : ''}
+        </div>
+      </div>
+      <button class="btn-rename-build" data-id="${escHtml(b.id)}" data-label="${escHtml(b.label)}"
+              style="background:var(--panel-2);color:var(--text);border:1px solid var(--border);border-radius:3px;padding:6px 12px;font-size:11px;font-weight:700;cursor:pointer">
+        Rename
+      </button>
+      <button class="btn-delete-build" data-id="${escHtml(b.id)}" data-label="${escHtml(b.label)}"
+              style="background:var(--red);color:#fff;border:none;border-radius:3px;padding:6px 12px;font-size:11px;font-weight:700;cursor:pointer">
+        Delete
+      </button>
+    </div>
+  `).join('');
+}
+
+async function renameBuild(buildId, currentLabel) {
+  const next = prompt('Rename build:', currentLabel);
+  if (next === null) return;
+  const trimmed = next.trim();
+  if (!trimmed || trimmed === currentLabel) return;
+  const r = await fetch('/v2/api/builds/' + buildId, {
+    method: 'PUT', credentials: 'same-origin',
+    headers: {'Content-Type': 'application/json'},
+    body: JSON.stringify({label: trimmed}),
+  });
+  const d = await r.json();
+  if (!r.ok) { alert(d.error || ('HTTP ' + r.status)); return; }
+  await refreshBuilds();
+  renderManageBuilds();
+}
+
+async function deleteBuild(buildId, label) {
+  if (!confirm(`Delete build "${label}"? This cannot be undone. (Variants and rankings will also be removed.)`)) return;
+  const r = await fetch('/v2/api/builds/' + buildId, {
+    method: 'DELETE', credentials: 'same-origin',
+  });
+  const d = await r.json();
+  if (!r.ok) { alert(d.error || ('HTTP ' + r.status)); return; }
+  await refreshBuilds();
+  renderManageBuilds();
+}
+
+// Delegate rename/delete-build clicks
+document.addEventListener('click', (e) => {
+  if (e.target.classList.contains('btn-rename-build')) {
+    renameBuild(e.target.dataset.id, e.target.dataset.label);
+  } else if (e.target.classList.contains('btn-delete-build')) {
+    deleteBuild(e.target.dataset.id, e.target.dataset.label);
+  }
+});
+
+// --- Edit build (re-parse PoB and/or update tree viewer URL) -----------
+function openEditBuild() {
+  if (!state.build) { alert('Load a build first.'); return; }
+  $('edit-pob-text').value = '';
+  $('edit-tree-url').value = state.build.tree_viewer_url || '';
+  $('edit-label').value = '';
+  $('edit-phase').value = '';
+  $('edit-err').textContent = '';
+  $('edit-build-modal').classList.add('open');
+  setTimeout(() => $('edit-pob-text').focus(), 50);
+}
+function closeEditBuild() { $('edit-build-modal').classList.remove('open'); }
+async function saveEditBuild() {
+  $('edit-err').textContent = '';
+  const pob = $('edit-pob-text').value.trim();
+  const tree_viewer_url = $('edit-tree-url').value.trim();
+  const label = $('edit-label').value.trim();
+  const phase = $('edit-phase').value;
+  if (tree_viewer_url && !tree_viewer_url.startsWith('http')) {
+    $('edit-err').textContent = 'Tree viewer URL must start with http(s)://';
+    return;
+  }
+  const body = {tree_viewer_url};
+  if (pob) body.pob = pob;
+  if (label) body.label = label;
+  if (phase) body.phase = phase;
+  try {
+    const r = await fetch(`/v2/api/builds/${state.build.id}`, {
+      method: 'PUT', credentials: 'same-origin',
+      headers: {'Content-Type':'application/json'},
+      body: JSON.stringify(body),
+    });
+    const d = await r.json();
+    if (!r.ok) { $('edit-err').textContent = d.error || ('HTTP ' + r.status); return; }
+    closeEditBuild();
+    // Reload EVERYTHING: build summary list (label/phase may have changed),
+    // then the current build (re-parsed gear/tree), then the iframe.
+    await refreshBuilds();
+  } catch (e) {
+    $('edit-err').textContent = e.message || String(e);
+  }
+}
+window.closeEditBuild = closeEditBuild;
+window.saveEditBuild = saveEditBuild;
+
+// --- Import ------------------------------------------------------------
+function openImport() {
+  $('import-modal').classList.add('open');
+  $('pob-text').value = '';
+  $('pob-label').value = '';
+  $('pob-phase').value = state.phase;
+  $('import-err').textContent = '';
+  $('pob-text').focus();
+}
+function closeImport() { $('import-modal').classList.remove('open'); }
+async function doImport() {
+  $('import-err').textContent = '';
+  const pob = $('pob-text').value.trim();
+  if (!pob) { $('import-err').textContent = 'Paste a PoB code or URL.'; return; }
+  const label = $('pob-label').value.trim();
+  const phase = $('pob-phase').value;
+  try {
+    const r = await fetch('/v2/api/builds', {
+      method: 'POST', credentials: 'same-origin',
+      headers: {'Content-Type':'application/json'},
+      body: JSON.stringify({pob, label, phase, tree_viewer_url: ''}),
+    });
+    const d = await r.json();
+    if (!r.ok) { $('import-err').textContent = d.error || ('HTTP ' + r.status); return; }
+    closeImport();
+    state.phase = phase; syncPhaseUI();
+    await refreshBuilds();
+    if (d.build_id) {
+      await setActiveBuild(d.build_id);
+      // Chain into the tree-viewer setup flow
+      openSetupViewer();
+    }
+  } catch (e) {
+    $('import-err').textContent = e.message || String(e);
+  }
+}
+window.closeImport = closeImport;
+window.doImport = doImport;
+
+// --- Tree viewer setup (copy raw PoB → paste into iframe → paste URL back) ----
+function openSetupViewer() {
+  $('setup-viewer-url').value = '';
+  $('setup-err').textContent = '';
+  $('setup-raw-code').value = (state.build && state.build.pob_code) || '';
+  $('setup-viewer-modal').classList.add('open');
+  // Ensure the iframe is on the paste page (not a stale build) when setting up
+  if (!state.build.tree_viewer_url) {
+    $('tree-iframe').src = 'https://poe.ninja/poe2/pob';
+    $('tree-iframe-wrap').style.display = 'block';
+    $('tree-placeholder').style.display = 'none';
+  }
+}
+function closeSetup() { $('setup-viewer-modal').classList.remove('open'); }
+
+async function copyRawPob() {
+  const code = $('setup-raw-code').value;
+  if (!code) { $('setup-err').textContent = 'No code to copy.'; return; }
+  let copied = false;
+  try {
+    if (navigator.clipboard && navigator.clipboard.writeText) {
+      await navigator.clipboard.writeText(code);
+      copied = true;
+    } else {
+      const ta = $('setup-raw-code'); ta.select();
+      copied = document.execCommand('copy');
+    }
+  } catch (e) {
+    $('setup-raw-code').select();
+    $('setup-err').textContent = 'Auto-copy failed — selected for you; press Ctrl+C, then click the button again.';
+    return;
+  }
+  // Open poe.ninja in a new tab for the user to paste into
+  window.open('https://poe.ninja/poe2/pob', '_blank', 'noopener,noreferrer');
+  const btn = $('btn-copy-raw');
+  const orig = btn.textContent;
+  btn.textContent = copied ? '✓ Copied — paste into the new tab' : 'Opened tab — copy & paste manually';
+  setTimeout(() => { btn.textContent = orig; }, 5000);
+}
+
+async function saveSetupViewer() {
+  $('setup-err').textContent = '';
+  const url = $('setup-viewer-url').value.trim();
+  if (!url) { $('setup-err').textContent = 'Paste the poe.ninja URL.'; return; }
+  if (!url.startsWith('http')) { $('setup-err').textContent = 'URL must start with http(s)://'; return; }
+  try {
+    const r = await fetch(`/v2/api/builds/${state.build.id}/tree-viewer`, {
+      method: 'PUT', credentials: 'same-origin',
+      headers: {'Content-Type':'application/json'},
+      body: JSON.stringify({url}),
+    });
+    const d = await r.json();
+    if (!r.ok) { $('setup-err').textContent = d.error || ('HTTP ' + r.status); return; }
+    state.build.tree_viewer_url = url;
+    closeSetup();
+    renderTreeViewer();
+  } catch (e) {
+    $('setup-err').textContent = e.message || String(e);
+  }
+}
+window.closeSetup = closeSetup;
+window.saveSetupViewer = saveSetupViewer;
+window.copyRawPob = copyRawPob;
+
+init();
+</script>
+</body>
+</html>

@@ -1,0 +1,13 @@
+[Unit]
+Description=poe2-helpers local service
+After=graphical-session.target
+
+[Service]
+Type=simple
+WorkingDirectory=%h/poe2-helpers
+ExecStart=%h/poe2-helpers/.venv/bin/python -m service.main
+Restart=on-failure
+RestartSec=3
+
+[Install]
+WantedBy=default.target

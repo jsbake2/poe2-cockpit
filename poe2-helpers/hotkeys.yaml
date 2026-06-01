@@ -1,0 +1,28 @@
+focus_required: "Path of Exile"
+
+hideout:
+  sequence: Ctrl+Alt+H
+  delayBefore: 0ms
+  delayAfter: 0ms
+  keypress:
+    - Enter
+    - /hideout
+    - Enter
+
+spam_q:
+  sequence: Ctrl+Alt+Q
+  repeatTimer: 500ms
+  toggleMode: true
+  keypress:
+    - q
+
+buffs:
+  sequence: Ctrl+Alt+B
+  delayBefore: 0ms
+  delayAfter: 0ms
+  keypress:
+    - Ctrl+q
+    - sleep 200ms
+    - Ctrl+r
+    - sleep 250ms
+    - Ctrl+t

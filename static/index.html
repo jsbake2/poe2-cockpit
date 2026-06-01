@@ -1,0 +1,1147 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>PoE2 League Companion</title>
+  <style>
+    :root {
+      --bg:#080604;--bg2:#100c07;--bg3:#181109;
+      --card:#12100a;--border:#3a2a16;--bhi:#5a4020;
+      --gold:#c8a84b;--gold2:#e2ca80;--gdim:#7a6030;
+      --txt:#d4c5a9;--dim:#8a7a60;--hi:#f0e8d0;
+      --blue:#6ab8e0;--bbg:#0a1a28;--bbdr:#1a4a6a;
+      --purple:#b070e8;--pbg:#180a28;--pbdr:#4a2a6a;
+      --red:#e06050;--grn:#60b060;--amb:#d09040;
+      --r:4px;
+    }
+    [data-theme="inferno"]{--bg:#080302;--bg2:#0f0604;--bg3:#170a05;--card:#110804;--border:#3a180c;--bhi:#5c2010;--gold:#e05828;--gold2:#f88050;--gdim:#7a2c10;--txt:#d4b8a5;--dim:#8a6050;--hi:#f8ddd0}
+    [data-theme="void"]{--bg:#060408;--bg2:#0b0812;--bg3:#110d1a;--card:#0d0b14;--border:#2e1c42;--bhi:#48266a;--gold:#a868f0;--gold2:#c898ff;--gdim:#5e2898;--txt:#c8bcda;--dim:#78688e;--hi:#ecdeff}
+    [data-theme="glacier"]{--bg:#02070f;--bg2:#060c1a;--bg3:#091222;--card:#071019;--border:#122b44;--bhi:#1c456c;--gold:#46b8e6;--gold2:#74d4f8;--gdim:#1a6e96;--txt:#b5ccd8;--dim:#587688;--hi:#d6edf8}
+    [data-theme="verdant"]{--bg:#030806;--bg2:#060d08;--bg3:#09130b;--card:#070e09;--border:#142e18;--bhi:#1e4826;--gold:#4ec868;--gold2:#76e08a;--gdim:#1e6030;--txt:#b5d0ba;--dim:#577860;--hi:#d6f0dc}
+    [data-theme="silver"]{--bg:#0c0c10;--bg2:#131318;--bg3:#1a1a20;--card:#111116;--border:#303040;--bhi:#505065;--gold:#c0c0d8;--gold2:#e0e0f5;--gdim:#606075;--txt:#d0d0e0;--dim:#808090;--hi:#f0f0ff}
+
+    *{box-sizing:border-box;margin:0;padding:0}
+    body{background:var(--bg);color:var(--txt);font-family:'Segoe UI',system-ui,sans-serif;font-size:14px}
+    a{color:inherit;text-decoration:none}
+
+    header{background:linear-gradient(180deg,#1c1008,#0d0a06);border-bottom:2px solid var(--gdim);padding:13px 20px;display:flex;align-items:center;gap:16px;flex-wrap:wrap}
+    h1{font-size:19px;font-weight:700;color:var(--gold);letter-spacing:1px}
+    .badge{background:var(--gdim);color:#080600;font-size:10px;font-weight:800;padding:3px 8px;border-radius:2px;letter-spacing:1.5px;text-transform:uppercase}
+    .hdr-r{margin-left:auto;display:flex;align-items:center;gap:10px;flex-wrap:wrap}
+    .save-pill{font-size:11px;color:var(--grn);opacity:0;transition:opacity .3s}
+    .save-pill.on{opacity:1}
+
+    nav.tabs{display:flex;background:var(--bg2);border-bottom:1px solid var(--border);padding:0 10px;gap:2px;overflow-x:auto}
+    .tab{background:none;border:none;border-bottom:3px solid transparent;color:var(--dim);cursor:pointer;font-size:13px;font-weight:500;padding:10px 15px;white-space:nowrap;transition:all .15s}
+    .tab:hover{color:var(--txt)}
+    .tab.on{color:var(--gold);border-bottom-color:var(--gold)}
+
+    .panel{display:none;padding:18px 20px 32px}
+    .panel.on{display:block}
+
+    .grid2{display:grid;grid-template-columns:1fr 1fr;gap:14px}
+
+    .card{background:var(--card);border:1px solid var(--border);border-radius:var(--r);padding:14px 16px;margin-bottom:12px}
+    .card:last-child{margin-bottom:0}
+    .ctitle{color:var(--gold);font-size:11px;font-weight:700;text-transform:uppercase;letter-spacing:1px;margin-bottom:10px;padding-bottom:7px;border-bottom:1px solid var(--border)}
+
+    .btn{background:var(--gdim);border:none;border-radius:var(--r);color:#080600;cursor:pointer;font-size:12px;font-weight:700;padding:6px 13px;white-space:nowrap;transition:background .15s}
+    .btn:hover{background:var(--gold)}
+    .btn-g{background:transparent;border:1px solid var(--border);color:var(--dim);font-weight:500}
+    .btn-g:hover{background:var(--bg3);color:var(--txt)}
+    .btn-r{background:#2a0a0a;border:1px solid #5a1a1a;color:#e06060}
+    .btn-r:hover{background:#3a1010;color:#ff8080}
+    .xs{font-size:11px;padding:3px 8px}
+
+    input[type=text],input[type=number],select,input[type=url]{background:var(--bg3);border:1px solid var(--border);border-radius:var(--r);color:var(--txt);font-family:inherit;font-size:13px;padding:5px 9px}
+    input:focus,select:focus{border-color:var(--gdim);outline:none}
+    textarea{background:var(--bg3);border:1px solid var(--border);border-radius:var(--r);color:var(--txt);font-family:inherit;font-size:13px;line-height:1.6;padding:10px 12px;resize:vertical;width:100%;min-height:80px}
+    textarea:focus{border-color:var(--gdim);outline:none}
+    .pi{background:transparent;border:none;color:var(--gold2);font-size:13px;font-weight:600;width:65px;padding:2px 3px}
+    .pi:focus{background:var(--bg3);border-radius:3px;outline:1px solid var(--gdim)}
+
+    .tb{background:#151000;border:1px solid #403800;border-radius:3px;color:#c8b840;cursor:pointer;font-size:11px;padding:3px 9px;white-space:nowrap;transition:all .15s;display:inline-block}
+    .tb:hover{background:#201800;border-color:#706010;color:var(--gold2)}
+
+    table{width:100%;border-collapse:collapse;font-size:13px}
+    th{background:var(--bg2);border:1px solid var(--border);color:var(--gold);font-size:10px;font-weight:700;letter-spacing:.8px;padding:7px 10px;text-align:left;text-transform:uppercase}
+    td{border:1px solid var(--border);padding:7px 10px;vertical-align:middle}
+    tr:nth-child(even) td{background:var(--bg3)}
+
+    .note{background:var(--bg3);border-left:3px solid var(--gdim);border-radius:0 var(--r) var(--r) 0;font-size:12px;color:var(--dim);line-height:1.6;padding:8px 12px;margin-bottom:12px}
+    .note a{color:var(--gold);text-decoration:underline}
+
+    hr{border:none;border-top:1px solid var(--border);margin:14px 0}
+
+    /* Note card */
+    .ncard{background:var(--bg3);border:1px solid var(--border);border-radius:var(--r);padding:10px 13px;margin-bottom:6px}
+    .ncard-hdr{display:flex;justify-content:space-between;align-items:center;margin-bottom:4px}
+    .ncard-user{font-size:11px;font-weight:700;color:var(--gold);text-transform:uppercase;letter-spacing:.5px}
+    .ncard-ts{font-size:10px;color:var(--dim)}
+    .ncard-text{font-size:13px;line-height:1.6;white-space:pre-wrap;word-break:break-word}
+
+    /* Watch item */
+    .wcard{background:var(--bg3);border:1px solid var(--border);border-radius:var(--r);padding:10px 13px;margin-bottom:6px;display:flex;gap:12px;align-items:flex-start}
+    .wcard.bought{opacity:.5;border-color:#2a5a2a}
+    .wcard-info{flex:1;min-width:0}
+    .wcard-for{font-size:9px;font-weight:700;padding:1px 6px;border-radius:2px;text-transform:uppercase;letter-spacing:.5px}
+    .wcard-for.jbaker{background:#1a1006;color:var(--gold)}
+    .wcard-for.matt{background:#0a1a28;color:var(--blue)}
+    .wcard-for.both{background:#1a0a28;color:var(--purple)}
+
+    /* Build item checklist */
+    .bitem{display:flex;align-items:center;gap:8px;padding:5px 0;border-bottom:1px solid var(--bg3);font-size:13px}
+    .bitem:last-child{border-bottom:none}
+    .bitem-checks{display:flex;gap:4px}
+    .bitem-check{display:flex;align-items:center;gap:2px;font-size:10px;color:var(--dim)}
+    .bitem-check input{accent-color:var(--gold);cursor:pointer}
+
+    /* Guide scanner */
+    .gsrc{font-size:9px;font-weight:800;padding:2px 7px;border-radius:2px;text-transform:uppercase;flex-shrink:0;letter-spacing:.5px}
+    .gsrc-reddit{background:#2a1206;color:#ff6030;border:1px solid #5a2010}
+    .guide-row{display:flex;align-items:flex-start;gap:10px;padding:8px 0;border-bottom:1px solid var(--bg3);flex-wrap:wrap}
+    .guide-row:last-child{border-bottom:none}
+    .guide-title{color:var(--hi);font-size:13px;flex:1;min-width:200px;line-height:1.4;text-decoration:none}
+    .guide-title:hover{color:var(--gold);text-decoration:underline}
+    .guide-meta{font-size:11px;color:var(--dim);white-space:nowrap;flex-shrink:0;margin-top:2px}
+    .guide-score{color:var(--grn)}
+    .guide-empty{color:var(--dim);padding:24px;text-align:center;font-size:13px}
+
+    /* Stat box */
+    .sbox{background:var(--bg3);border:1px solid var(--border);border-radius:var(--r);padding:4px 8px;text-align:center;flex:1;min-width:60px}
+    .sval{font-size:14px;font-weight:700;color:var(--gold);line-height:1}
+    .slbl{font-size:10px;color:var(--dim);text-transform:uppercase;letter-spacing:.5px;margin-top:2px}
+
+    .links{display:flex;gap:8px;flex-wrap:wrap}
+    .lpill{background:#100e08;border:1px solid var(--bhi);border-radius:3px;color:var(--gdim);font-size:12px;padding:6px 13px;cursor:pointer;transition:all .15s;white-space:nowrap}
+    .lpill:hover{background:var(--bg3);border-color:var(--gdim);color:var(--gold)}
+
+    .cur-row td{padding:5px 10px}
+
+    @media(max-width:720px){.grid2{grid-template-columns:1fr}}
+  </style>
+</head>
+<body>
+
+<header>
+  <h1>PoE2 Companion</h1>
+  <span class="badge">0.5 League</span>
+  <div class="hdr-r">
+    <label style="font-size:11px;color:var(--dim);text-transform:uppercase;letter-spacing:.5px;">League:</label>
+    <select id="league" onchange="S.league=this.value;save()" style="width:180px;font-size:12px;">
+      <option value="Standard">Standard</option>
+    </select>
+    <label style="font-size:11px;color:var(--dim);text-transform:uppercase;letter-spacing:.5px;">Theme:</label>
+    <select id="theme-sel" onchange="setTheme(this.value)" style="font-size:12px;">
+      <option value="">Wraeclast</option>
+      <option value="inferno">Inferno</option>
+      <option value="void">Void</option>
+      <option value="glacier">Glacier</option>
+      <option value="verdant">Verdant</option>
+      <option value="silver">Silver</option>
+    </select>
+    <span class="save-pill" id="spill">Saved</span>
+    <span style="color:var(--dim);">|</span>
+    <span id="user-badge" style="font-size:11px;color:var(--gold);font-weight:600;text-transform:uppercase;letter-spacing:.5px;"></span>
+    <button class="btn xs btn-g" onclick="fetch('/api/logout',{method:'POST'}).then(()=>location.href='/login')" style="font-size:10px;padding:2px 8px;">Logout</button>
+  </div>
+</header>
+
+<nav class="tabs">
+  <button class="tab on" data-tab="builds">Builds</button>
+  <button class="tab" data-tab="watchlist">Watchlist</button>
+  <button class="tab" data-tab="notes">Notes</button>
+  <button class="tab" data-tab="characters">Characters</button>
+  <button class="tab" data-tab="guides">Guides</button>
+  <button class="tab" data-tab="market">Market</button>
+  <button class="tab" data-tab="filter">Filter Preview</button>
+  <button class="tab" data-tab="files">Files</button>
+</nav>
+
+<main>
+
+<!-- ══════ BUILDS ══════ -->
+<div class="panel on" id="tab-builds">
+  <div class="card" style="margin-bottom:14px;">
+    <div class="ctitle" style="display:flex;align-items:center;">
+      Builds & Item Checklists
+      <button class="btn xs" style="margin-left:auto;" onclick="showAddBuild()">+ New Build</button>
+      <button class="btn xs btn-g" style="margin-left:6px;" onclick="showImportBuild()">Import from poe.ninja</button>
+      <button class="btn xs btn-g" style="margin-left:6px;" onclick="downloadFilter()">Export Filter Rules</button>
+    </div>
+    <div class="note">Track build-defining items for each character. Check off who has what so you can farm and trade for each other. "Export Filter Rules" generates a JSON that the <code>update_filter.py</code> script injects into your NeverSink filter.</div>
+  </div>
+
+  <!-- Add build form (hidden by default) -->
+  <div class="card" id="add-build-form" style="display:none;margin-bottom:14px;">
+    <div class="ctitle">New Build</div>
+    <div style="display:grid;grid-template-columns:1fr 1fr;gap:8px;margin-bottom:8px;">
+      <input type="text" id="nb-name" placeholder="Build name (e.g. Frost Darts Infernalist)">
+      <select id="nb-owner" style="font-size:13px;"></select>
+    </div>
+    <input type="text" id="nb-class" placeholder="Class (e.g. Infernalist)" style="width:100%;margin-bottom:8px;">
+    <input type="text" id="nb-terms" placeholder="Guide search terms, comma-separated (e.g. poe2 frost darts, demon form guide)" style="width:100%;margin-bottom:8px;">
+    <div style="display:flex;gap:8px;">
+      <button class="btn xs" onclick="submitBuild()">Create</button>
+      <button class="btn xs btn-g" onclick="document.getElementById('add-build-form').style.display='none'">Cancel</button>
+    </div>
+  </div>
+
+  <!-- Import build form (hidden by default) -->
+  <div class="card" id="import-build-form" style="display:none;margin-bottom:14px;">
+    <div class="ctitle">Import from poe.ninja</div>
+    <div class="note" style="margin-bottom:8px;">Paste a poe.ninja character URL. The importer will extract all unique items and create a checklist automatically.</div>
+    <div style="display:flex;gap:8px;margin-bottom:8px;">
+      <input type="url" id="ib-url" placeholder="https://poe.ninja/poe2/builds/standard/character/account/name" style="flex:1;">
+      <select id="ib-owner" style="font-size:13px;width:100px;"></select>
+    </div>
+    <div style="display:flex;gap:8px;">
+      <button class="btn xs" onclick="submitImport()">Import</button>
+      <button class="btn xs btn-g" onclick="document.getElementById('import-build-form').style.display='none'">Cancel</button>
+    </div>
+    <div id="import-status" style="font-size:11px;color:var(--dim);margin-top:6px;"></div>
+  </div>
+
+  <div id="builds-list"></div>
+</div>
+
+<!-- ══════ WATCHLIST ══════ -->
+<div class="panel" id="tab-watchlist">
+  <div class="card" style="margin-bottom:14px;">
+    <div class="ctitle">Trade Watchlist</div>
+    <div class="note">Share trade links to watch for each other. Paste a trade URL, say who it's for, and both of you can see it.</div>
+    <div style="display:grid;grid-template-columns:1fr auto;gap:8px;margin-top:10px;">
+      <input type="url" id="wl-url" placeholder="Trade URL (paste from pathofexile.com/trade2)" style="font-size:12px;">
+      <select id="wl-for" style="font-size:12px;width:100px;">
+        <option value="">Both</option>
+        <option value="jbaker">jbaker</option>
+        <option value="matt">matt</option>
+      </select>
+    </div>
+    <div style="display:grid;grid-template-columns:1fr auto;gap:8px;margin-top:6px;">
+      <input type="text" id="wl-label" placeholder="Item name / description" style="font-size:12px;">
+      <button class="btn xs" onclick="addWatchItem()">Add to Watchlist</button>
+    </div>
+  </div>
+  <div id="watchlist-items"></div>
+</div>
+
+<!-- ══════ NOTES ══════ -->
+<div class="panel" id="tab-notes">
+  <div class="card" style="margin-bottom:14px;">
+    <div class="ctitle">Message Board</div>
+    <textarea id="note-input" placeholder="Leave a note for each other... plans, tips, reminders, whatever." style="min-height:60px;margin-bottom:8px;"></textarea>
+    <button class="btn xs" onclick="addNote()">Post Note</button>
+  </div>
+  <div id="notes-list"></div>
+</div>
+
+<!-- ══════ CHARACTERS ══════ -->
+<div class="panel" id="tab-characters">
+  <div class="card" style="margin-bottom:14px;">
+    <div class="ctitle" style="display:flex;align-items:center;">
+      Character Comparison
+      <span id="char-status" style="font-size:11px;color:var(--dim);margin-left:8px;font-weight:400;letter-spacing:0;"></span>
+      <button class="btn xs" style="margin-left:auto;" onclick="refreshMyChars()">Refresh My Characters</button>
+    </div>
+    <div class="note">PoE2 characters from <strong>poe.ninja</strong> (appears once you're ranked on the ladder). Polls every 30 min.</div>
+  </div>
+  <div id="char-grid" class="grid2">
+    <div id="char-col-jbaker"><div class="card"><div class="ctitle">jbaker</div><div class="guide-empty">No data yet.</div></div></div>
+    <div id="char-col-matt"><div class="card"><div class="ctitle">matt</div><div class="guide-empty">No data yet.</div></div></div>
+  </div>
+</div>
+
+<!-- ══════ GUIDES ══════ -->
+<div class="panel" id="tab-guides">
+  <div class="grid2">
+    <div>
+      <div class="card">
+        <div class="ctitle">Guide Scanner</div>
+        <div style="display:flex;align-items:center;gap:10px;flex-wrap:wrap;margin-bottom:10px;">
+          <span style="font-size:13px;color:var(--dim);">Last</span>
+          <select id="guide-days" style="width:68px;font-size:13px;">
+            <option value="1">1 day</option>
+            <option value="3">3 days</option>
+            <option value="7" selected>7 days</option>
+            <option value="14">14 days</option>
+            <option value="30">30 days</option>
+          </select>
+          <select id="guide-build-sel" style="font-size:13px;flex:1;min-width:120px;">
+            <option value="_default">Default (Demon Form / Infernalist)</option>
+          </select>
+          <button class="btn" onclick="scanGuides()">Scan Reddit</button>
+          <span id="guide-status" style="font-size:11px;color:var(--dim);"></span>
+        </div>
+        <div class="note" style="margin-bottom:12px;">Searches <strong>r/pathofexile2</strong>, <strong>r/PathOfExile2Builds</strong>, <strong>r/pathofexile</strong> with the selected build's search terms.</div>
+        <div id="guide-results"><div class="guide-empty">Hit "Scan Reddit" to load recent posts.</div></div>
+      </div>
+    </div>
+    <div>
+      <div class="card">
+        <div class="ctitle">Open Search in New Tab</div>
+        <div style="display:grid;grid-template-columns:1fr 1fr;gap:8px;margin-bottom:14px;">
+          <button class="btn btn-g" style="font-size:12px;" onclick="openSearch('reddit-new')">Reddit — New ↗</button>
+          <button class="btn btn-g" style="font-size:12px;" onclick="openSearch('reddit-top')">Reddit — Top ↗</button>
+          <button class="btn btn-g" style="font-size:12px;" onclick="openSearch('youtube')">YouTube ↗</button>
+          <button class="btn btn-g" style="font-size:12px;" onclick="openSearch('youtube-recent')">YouTube — Recent ↗</button>
+          <button class="btn btn-g" style="font-size:12px;" onclick="openSearch('forums')">PoE Forums ↗</button>
+          <button class="btn btn-g" style="font-size:12px;" onclick="openSearch('ninja')">poe.ninja Builds ↗</button>
+          <button class="btn btn-g" style="font-size:12px;" onclick="openSearch('maxroll')">maxroll.gg ↗</button>
+        </div>
+      </div>
+    </div>
+  </div>
+</div>
+
+<!-- ══════ MARKET ══════ -->
+<div class="panel" id="tab-market">
+  <div class="grid2">
+    <div>
+      <div class="card">
+        <div class="ctitle" style="display:flex;align-items:center;">
+          Currency Rates
+          <span id="mkt-ts" style="font-size:11px;color:var(--dim);margin-left:8px;font-weight:400;letter-spacing:0;"></span>
+          <button class="btn xs" style="margin-left:auto;" id="ninja-btn" onclick="syncNinja()">Sync poe.ninja</button>
+          <span id="ninja-status" style="font-size:11px;color:var(--dim);margin-left:6px;"></span>
+        </div>
+        <table>
+          <thead><tr><th>Currency</th><th>Rate (Chaos)</th><th>Notes</th></tr></thead>
+          <tbody class="cur-row">
+            <tr><td>Divine Orb</td><td><input class="pi" id="cr-div" placeholder="?" oninput="P('cr-div',this.value)"></td><td><input type="text" id="cn-div" style="background:transparent;border:none;color:var(--dim);font-size:12px;width:100%;" placeholder="note…" oninput="P('cn-div',this.value)"></td></tr>
+            <tr><td>Exalted Orb</td><td><input class="pi" id="cr-ex" placeholder="?" oninput="P('cr-ex',this.value)"></td><td><input type="text" id="cn-ex" style="background:transparent;border:none;color:var(--dim);font-size:12px;width:100%;" placeholder="note…" oninput="P('cn-ex',this.value)"></td></tr>
+            <tr><td>Chaos Orb</td><td><input class="pi" id="cr-chaos" placeholder="?" oninput="P('cr-chaos',this.value)"></td><td><input type="text" id="cn-chaos" style="background:transparent;border:none;color:var(--dim);font-size:12px;width:100%;" placeholder="note…" oninput="P('cn-chaos',this.value)"></td></tr>
+            <tr><td>Orb of Alteration</td><td><input class="pi" id="cr-alt" placeholder="?" oninput="P('cr-alt',this.value)"></td><td><input type="text" id="cn-alt" style="background:transparent;border:none;color:var(--dim);font-size:12px;width:100%;" placeholder="note…" oninput="P('cn-alt',this.value)"></td></tr>
+            <tr><td>Annulment Orb</td><td><input class="pi" id="cr-ann" placeholder="?" oninput="P('cr-ann',this.value)"></td><td><input type="text" id="cn-ann" style="background:transparent;border:none;color:var(--dim);font-size:12px;width:100%;" placeholder="note…" oninput="P('cn-ann',this.value)"></td></tr>
+            <tr><td>Verisium <span style="color:var(--gold);font-size:9px;font-weight:800;">★0.5</span></td><td><input class="pi" id="cr-veri" placeholder="?" oninput="P('cr-veri',this.value)"></td><td><input type="text" id="cn-veri" style="background:transparent;border:none;color:var(--dim);font-size:12px;width:100%;" placeholder="Runes of Aldur core currency" oninput="P('cn-veri',this.value)"></td></tr>
+            <tr><td>Wombgift <span style="color:var(--gold);font-size:9px;font-weight:800;">★0.5</span></td><td><input class="pi" id="cr-womb" placeholder="?" oninput="P('cr-womb',this.value)"></td><td><input type="text" id="cn-womb" style="background:transparent;border:none;color:var(--dim);font-size:12px;width:100%;" placeholder="Breach / Genesis Tree" oninput="P('cn-womb',this.value)"></td></tr>
+            <tr><td>Hiveblood <span style="color:var(--gold);font-size:9px;font-weight:800;">★0.5</span></td><td><input class="pi" id="cr-hive" placeholder="?" oninput="P('cr-hive',this.value)"></td><td><input type="text" id="cn-hive" style="background:transparent;border:none;color:var(--dim);font-size:12px;width:100%;" placeholder="Breach / Genesis Tree" oninput="P('cn-hive',this.value)"></td></tr>
+          </tbody>
+        </table>
+      </div>
+    </div>
+    <div>
+      <div class="card">
+        <div class="ctitle" style="display:flex;align-items:center;">
+          Meta & Tier List
+          <button class="btn xs" style="margin-left:auto;" onclick="loadPopularBuilds()">Scan Mobalytics</button>
+          <span id="pop-status" style="font-size:11px;color:var(--dim);margin-left:6px;"></span>
+        </div>
+        <div class="note" style="margin-bottom:8px;">Pulls the current ascendancy tier list and build guides from Mobalytics. S and A tier builds tell you what items will be in demand.</div>
+        <div id="pop-results"><div class="guide-empty">Click "Scan Mobalytics" to load demand data.</div></div>
+        <hr style="margin:14px 0 10px;">
+        <div id="tracked-guides"><div class="guide-empty" style="font-size:11px;">No tracked guides yet.</div></div>
+      </div>
+
+      <div class="card">
+        <div class="ctitle">League Timing Tips</div>
+        <div style="font-size:12px;line-height:1.8;color:var(--dim);">
+          <div style="padding:4px 0;border-bottom:1px solid var(--bg3);"><strong style="color:var(--gold);">Day 1-2:</strong> Rush maps. Sell build-enabling gems and early uniques at peak. Watch poe.ninja for the viral build — snipe its key item before price spikes.</div>
+          <div style="padding:4px 0;border-bottom:1px solid var(--bg3);"><strong style="color:var(--gold);">Day 3-5:</strong> Currency flipping window. Buy Exalts/Divines from panic sellers, resell when rates stabilize. Craft-flip wands (buy ilvl 75+ base, roll 2-3 good mods, sell).</div>
+          <div style="padding:4px 0;border-bottom:1px solid var(--bg3);"><strong style="color:var(--gold);">Week 1-2:</strong> Check the "Hot Items" scan above. Identify the top 5 demanded uniques and farm the content that drops them, or buy cheap and relist at market rate.</div>
+          <div style="padding:4px 0;"><strong style="color:var(--gold);">Week 3+:</strong> Craft endgame rares. The demand shifts from uniques to high-tier rares. Focus on the stat combos your build tracker shows.</div>
+        </div>
+      </div>
+
+      <div class="card">
+        <div class="ctitle">Market Notes</div>
+        <textarea id="n-market" style="min-height:120px;" placeholder="Price observations, flip targets, trends…" oninput="Sn('market',this.value)"></textarea>
+      </div>
+      <div class="card">
+        <div class="ctitle">Quick Links</div>
+        <div class="links">
+          <a class="lpill" href="https://poe.ninja/economy/poe2" target="_blank">poe.ninja Economy ↗</a>
+          <a class="lpill" id="trade-link" href="https://www.pathofexile.com/trade2/search/poe2" target="_blank">PoE2 Trade ↗</a>
+          <a class="lpill" href="https://www.craftofexile.com/?v=poe2" target="_blank">Craft of Exile ↗</a>
+          <a class="lpill" href="https://maxroll.gg/poe2" target="_blank">maxroll.gg ↗</a>
+        </div>
+      </div>
+    </div>
+  </div>
+</div>
+
+<!-- ══════ FILTER PREVIEW ══════ -->
+<div class="panel" id="tab-filter">
+  <div class="card" style="margin-bottom:14px;">
+    <div class="ctitle" style="display:flex;align-items:center;">
+      Filter Preview
+      <button class="btn xs" style="margin-left:auto;" onclick="loadFilterPreview()">↻ Reload</button>
+    </div>
+    <div class="note">Visual preview of every rule your filter will inject — colors, borders, font sizes, beam, minimap icon. Pulled from <code>/api/filter/export</code> so it always reflects your current builds + tracked Mobalytics guides.</div>
+  </div>
+
+  <div class="card" style="margin-bottom:14px;">
+    <div class="ctitle">Sandbox — Test an Item</div>
+    <div class="note" style="margin-bottom:8px;">Type an item name + base type and see whether your filter would match it.</div>
+    <div style="display:grid;grid-template-columns:1fr 1fr 100px auto;gap:8px;">
+      <input type="text" id="fp-name" placeholder="Item name (e.g. Headhunter)" style="font-size:12px;">
+      <input type="text" id="fp-base" placeholder="Base type (e.g. Heavy Belt)" style="font-size:12px;">
+      <select id="fp-rarity" style="font-size:12px;">
+        <option value="Unique">Unique</option>
+        <option value="Rare">Rare</option>
+        <option value="Magic">Magic</option>
+        <option value="Normal">Normal</option>
+      </select>
+      <button class="btn xs" onclick="testFilterItem()">Test</button>
+    </div>
+    <div id="fp-test-result" style="margin-top:10px;"></div>
+  </div>
+
+  <div id="fp-rules"><div class="guide-empty">Loading filter rules…</div></div>
+</div>
+
+<!-- ══════ FILES ══════ -->
+<div class="panel" id="tab-files">
+  <div class="card" style="margin-bottom:14px;">
+    <div class="ctitle">Shared Files</div>
+    <div class="note">Upload scripts, configs, PoB exports, or anything useful. Both users can see and download all files.</div>
+    <div class="note" style="border-left-color:var(--gold);margin-top:8px;">
+      <strong style="color:var(--gold);">Filter Updater Script:</strong> Download <a href="/api/files/update_filter.py" style="color:var(--gold);text-decoration:underline;">update_filter.py</a> and run it to inject your build items into your NeverSink filter.<br>
+      <code style="font-size:11px;color:var(--dim);">python update_filter.py /path/to/NeverSink.filter --server http://YOUR_IP:8889 --user jbaker --password onetwo</code>
+    </div>
+    <div style="display:flex;gap:8px;align-items:center;margin-top:10px;">
+      <input type="file" id="file-upload" style="font-size:12px;">
+      <button class="btn xs" onclick="uploadFile()">Upload</button>
+      <span id="file-status" style="font-size:11px;color:var(--dim);"></span>
+    </div>
+  </div>
+  <div id="files-list"></div>
+</div>
+
+</main>
+
+<script>
+// ── State ────────────────────────────────────────
+let S={};
+let _saveTimer=null;
+let _currentUser='';
+
+function save(){
+  clearTimeout(_saveTimer);
+  const e=document.getElementById('spill');e.classList.add('on');clearTimeout(e._t);e._t=setTimeout(()=>e.classList.remove('on'),1400);
+  _saveTimer=setTimeout(()=>{
+    fetch('/api/state',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({state:S})}).catch(()=>{});
+  },300);
+}
+function P(k,v){S[k]=v;save()}
+function Sn(k,v){S['n_'+k]=v;save()}
+function escHtml(s){return String(s).replace(/&/g,'&amp;').replace(/</g,'&lt;').replace(/>/g,'&gt;').replace(/"/g,'&quot;')}
+function fmtAge(utc){const d=Math.floor((Date.now()/1000-utc));if(d<3600)return Math.floor(d/60)+'m ago';if(d<86400)return Math.floor(d/3600)+'h ago';return Math.floor(d/86400)+'d ago'}
+function fmtTs(iso){return new Date(iso).toLocaleString(undefined,{month:'short',day:'numeric',hour:'numeric',minute:'2-digit'})}
+function getLeague(){return document.getElementById('league').value.trim()||'Standard'}
+function tradeItem(name){window.open(`https://www.pathofexile.com/trade2/search/poe2/${encodeURIComponent(getLeague())}?q=${encodeURIComponent(JSON.stringify({query:{name,status:{option:"online"}},sort:{price:"asc"}}))}`, '_blank')}
+
+// ── Tabs ─────────────────────────────────────────
+document.querySelectorAll('.tab').forEach(b=>{
+  b.addEventListener('click',()=>{
+    document.querySelectorAll('.tab').forEach(x=>x.classList.remove('on'));
+    document.querySelectorAll('.panel').forEach(x=>x.classList.remove('on'));
+    b.classList.add('on');
+    document.getElementById('tab-'+b.dataset.tab).classList.add('on');
+    if(b.dataset.tab==='filter'&&!_filterRules.length)loadFilterPreview();
+  });
+});
+
+// ── Theme ────────────────────────────────────────
+function setTheme(n){if(n)document.documentElement.setAttribute('data-theme',n);else document.documentElement.removeAttribute('data-theme');S.theme=n;save()}
+
+// ── Restore per-user state ───────────────────────
+function restore(){
+  if(S.theme){document.documentElement.setAttribute('data-theme',S.theme);document.getElementById('theme-sel').value=S.theme}
+  if(S.mktTs)document.getElementById('mkt-ts').textContent='Updated '+S.mktTs;
+  ['market'].forEach(k=>{const el=document.getElementById('n-'+k);if(el&&S['n_'+k])el.value=S['n_'+k]});
+  Object.keys(S).forEach(k=>{
+    if(k.startsWith('n_')||['theme','league','mktTs'].includes(k))return;
+    const el=document.getElementById(k);
+    if(el&&(el.tagName==='INPUT'||el.tagName==='SELECT'))el.value=S[k];
+  });
+}
+
+// ── Builds ───────────────────────────────────────
+let _builds=[];
+async function loadBuilds(){
+  try{const r=await fetch('/api/builds');if(r.ok){const d=await r.json();_builds=d.builds||[];renderBuilds();updateGuideBuildSel();}}catch(e){}
+}
+function renderBuilds(){
+  const el=document.getElementById('builds-list');
+  if(!_builds.length){el.innerHTML='<div class="guide-empty">No builds yet. Create one or import from poe.ninja.</div>';return;}
+  el.innerHTML=_builds.map(b=>{
+    let h=`<div class="card" style="margin-bottom:14px;">`;
+    h+=`<div class="ctitle" style="display:flex;align-items:center;gap:8px;">`;
+    h+=`<span>${escHtml(b.name)}</span>`;
+    h+=`<span style="font-weight:400;color:var(--dim);font-size:10px;">${escHtml(b.owner)}'s build</span>`;
+    if(b.class)h+=`<span style="font-weight:400;color:var(--amb);font-size:10px;">${escHtml(b.class)}</span>`;
+    if(b.reference_url)h+=`<a class="tb" href="${escHtml(b.reference_url)}" target="_blank" style="margin-left:auto;font-size:10px;">Reference ↗</a>`;
+    h+=`<button class="btn xs btn-r" style="margin-left:${b.reference_url?'6px':'auto'};font-size:9px;" onclick="deleteBuild('${b.id}')">Delete</button>`;
+    h+=`</div>`;
+
+    if(b.notes)h+=`<div class="note" style="font-size:11px;">${escHtml(b.notes)}</div>`;
+
+    if(b.items&&b.items.length){
+      h+=`<div style="margin-top:4px;">`;
+      b.items.forEach((item,i)=>{
+        const col=item.tag==='unique'?'var(--gold)':item.tag==='rare'?'#ff0':'var(--txt)';
+        h+=`<div class="bitem">`;
+        h+=`<span style="color:${col};flex:1;min-width:0;">${escHtml(item.name)}</span>`;
+        h+=`<span style="font-size:10px;color:var(--dim);min-width:60px;">${escHtml(item.slot)}</span>`;
+        h+=`<div class="bitem-checks">`;
+        h+=`<label class="bitem-check"><input type="checkbox" ${item.got_by?.jbaker?'checked':''} onchange="toggleBuildItem('${b.id}',${i},'jbaker',this.checked)">jb</label>`;
+        h+=`<label class="bitem-check"><input type="checkbox" ${item.got_by?.matt?'checked':''} onchange="toggleBuildItem('${b.id}',${i},'matt',this.checked)">mt</label>`;
+        h+=`</div>`;
+        if(item.tag==='unique'){
+          h+=`<a class="tb" href="https://www.pathofexile.com/trade2/search/poe2/${encodeURIComponent(getLeague())}" target="_blank" onclick="event.preventDefault();tradeItem('${escHtml(item.name.replace(/'/g,"\\'"))}')">Trade</a>`;
+        }
+        h+=`</div>`;
+      });
+      h+=`</div>`;
+    }
+
+    // Embedded tree (if reference URL is poe.ninja)
+    if(b.reference_url&&b.reference_url.includes('poe.ninja')){
+      const treeUrl=b.reference_url.replace(/\/?$/,'/passive-tree');
+      h+=`<div style="margin-top:10px;">`;
+      h+=`<button class="btn xs btn-g" onclick="this.nextElementSibling.style.display=this.nextElementSibling.style.display==='none'?'block':'none';this.textContent=this.nextElementSibling.style.display==='none'?'Show Passive Tree':'Hide Tree'">Show Passive Tree</button>`;
+      h+=`<div style="display:none;margin-top:8px;"><iframe src="${escHtml(treeUrl)}" style="width:100%;height:500px;border:1px solid var(--border);border-radius:var(--r);background:var(--bg3);" sandbox="allow-scripts allow-same-origin allow-forms allow-popups"></iframe></div>`;
+      h+=`</div>`;
+    }
+
+    h+=`</div>`;
+    return h;
+  }).join('');
+}
+function showAddBuild(){
+  document.getElementById('add-build-form').style.display='block';
+  document.getElementById('nb-owner').innerHTML=Object.keys({jbaker:1,matt:1}).map(u=>`<option value="${u}"${u===_currentUser?' selected':''}>${u}</option>`).join('');
+}
+function showImportBuild(){
+  document.getElementById('import-build-form').style.display='block';
+  document.getElementById('ib-owner').innerHTML=Object.keys({jbaker:1,matt:1}).map(u=>`<option value="${u}"${u===_currentUser?' selected':''}>${u}</option>`).join('');
+}
+async function submitBuild(){
+  const name=document.getElementById('nb-name').value.trim();
+  if(!name)return;
+  await fetch('/api/builds',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({
+    name,owner:document.getElementById('nb-owner').value,
+    class:document.getElementById('nb-class').value.trim(),
+    guide_terms:document.getElementById('nb-terms').value.split(',').map(s=>s.trim()).filter(Boolean),
+  })});
+  document.getElementById('add-build-form').style.display='none';
+  document.getElementById('nb-name').value='';document.getElementById('nb-class').value='';document.getElementById('nb-terms').value='';
+  loadBuilds();
+}
+async function submitImport(){
+  const url=document.getElementById('ib-url').value.trim();
+  const st=document.getElementById('import-status');
+  if(!url){st.textContent='Enter a URL';st.style.color='var(--red)';return;}
+  st.textContent='Importing…';st.style.color='var(--dim)';
+  const r=await fetch('/api/builds/import',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({url,owner:document.getElementById('ib-owner').value})});
+  const d=await r.json();
+  if(d.ok){st.textContent='Imported!';st.style.color='var(--grn)';document.getElementById('import-build-form').style.display='none';document.getElementById('ib-url').value='';loadBuilds();}
+  else{st.textContent=d.error||'Failed';st.style.color='var(--red)';}
+}
+async function toggleBuildItem(buildId,idx,user,val){
+  const b=_builds.find(b=>b.id===buildId);if(!b||!b.items[idx])return;
+  b.items[idx].got_by=b.items[idx].got_by||{};
+  b.items[idx].got_by[user]=val;
+  await fetch(`/api/builds/${buildId}`,{method:'PATCH',headers:{'Content-Type':'application/json'},body:JSON.stringify({items:b.items})});
+}
+async function deleteBuild(id){
+  if(!confirm('Delete this build?'))return;
+  await fetch(`/api/builds/${id}`,{method:'DELETE'});
+  loadBuilds();
+}
+function downloadFilter(){window.open('/api/filter/export/download','_blank')}
+
+// ── Watchlist ────────────────────────────────────
+async function loadWatchlist(){
+  try{const r=await fetch('/api/watchlist');if(r.ok){const d=await r.json();renderWatchlist(d.watchlist||[]);}}catch(e){}
+}
+function renderWatchlist(items){
+  const el=document.getElementById('watchlist-items');
+  if(!items.length){el.innerHTML='<div class="guide-empty">No items on the watchlist yet.</div>';return;}
+  el.innerHTML=items.map(w=>{
+    const forCls=w.for_user||'both';
+    const forLabel=w.for_user||'both';
+    let h=`<div class="wcard${w.status==='bought'?' bought':''}">`;
+    h+=`<div class="wcard-info">`;
+    h+=`<div style="display:flex;align-items:center;gap:6px;margin-bottom:4px;">`;
+    h+=`<span class="wcard-for ${forCls}">${escHtml(forLabel)}</span>`;
+    h+=`<strong style="color:var(--hi);font-size:13px;">${escHtml(w.label||'Untitled')}</strong>`;
+    h+=`<span style="font-size:10px;color:var(--dim);">by ${escHtml(w.user)} · ${fmtTs(w.ts)}</span>`;
+    h+=`</div>`;
+    if(w.url)h+=`<a href="${escHtml(w.url)}" target="_blank" class="tb" style="margin-bottom:4px;">Open Trade Link ↗</a> `;
+    if(w.note)h+=`<span style="font-size:12px;color:var(--dim);">${escHtml(w.note)}</span>`;
+    h+=`</div>`;
+    h+=`<div style="display:flex;flex-direction:column;gap:4px;flex-shrink:0;">`;
+    if(w.status!=='bought')h+=`<button class="btn xs" onclick="updateWatch('${w.id}','bought')">Got it</button>`;
+    else h+=`<button class="btn xs btn-g" onclick="updateWatch('${w.id}','watching')">Rewatch</button>`;
+    h+=`<button class="btn xs btn-r" onclick="deleteWatch('${w.id}')">Remove</button>`;
+    h+=`</div></div>`;
+    return h;
+  }).join('');
+}
+async function addWatchItem(){
+  const url=document.getElementById('wl-url').value.trim();
+  const label=document.getElementById('wl-label').value.trim();
+  if(!label&&!url)return;
+  await fetch('/api/watchlist',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({
+    url,label:label||url,for_user:document.getElementById('wl-for').value,
+  })});
+  document.getElementById('wl-url').value='';document.getElementById('wl-label').value='';
+  loadWatchlist();
+}
+async function updateWatch(id,status){
+  await fetch(`/api/watchlist/${id}`,{method:'PATCH',headers:{'Content-Type':'application/json'},body:JSON.stringify({status})});
+  loadWatchlist();
+}
+async function deleteWatch(id){
+  await fetch(`/api/watchlist/${id}`,{method:'DELETE'});
+  loadWatchlist();
+}
+
+// ── Notes ────────────────────────────────────────
+async function loadNotes(){
+  try{const r=await fetch('/api/notes');if(r.ok){const d=await r.json();renderNotes(d.notes||[]);}}catch(e){}
+}
+function renderNotes(notes){
+  const el=document.getElementById('notes-list');
+  if(!notes.length){el.innerHTML='<div class="guide-empty">No notes yet. Post one above.</div>';return;}
+  // Sort: pinned first, then by time
+  const sorted=[...notes].sort((a,b)=>{if(a.pinned&&!b.pinned)return -1;if(!a.pinned&&b.pinned)return 1;return 0;});
+  el.innerHTML=sorted.map(n=>{
+    const pinStyle=n.pinned?'border-left:3px solid var(--gold);':'';
+    let h=`<div class="ncard" style="${pinStyle}">`;
+    h+=`<div class="ncard-hdr">`;
+    if(n.pinned)h+=`<span style="font-size:9px;color:var(--gold);margin-right:4px;">PINNED</span>`;
+    h+=`<span class="ncard-user">${escHtml(n.user)}</span><span class="ncard-ts">${fmtTs(n.ts)}</span>`;
+    h+=`<button class="btn xs btn-g" style="font-size:9px;margin-left:8px;" onclick="togglePin('${n.id}',${!n.pinned})">${n.pinned?'Unpin':'Pin'}</button>`;
+    if(n.user===_currentUser)h+=`<button class="btn xs btn-r" style="font-size:9px;margin-left:4px;" onclick="deleteNote('${n.id}')">x</button>`;
+    h+=`</div>`;
+    h+=`<div class="ncard-text">${escHtml(n.text)}</div>`;
+    h+=`</div>`;
+    return h;
+  }).join('');
+}
+async function addNote(){
+  const el=document.getElementById('note-input');
+  const text=el.value.trim();if(!text)return;
+  await fetch('/api/notes',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({text})});
+  el.value='';loadNotes();
+}
+async function togglePin(id,pinned){
+  await fetch(`/api/notes/${id}`,{method:'PATCH',headers:{'Content-Type':'application/json'},body:JSON.stringify({pinned})});
+  loadNotes();
+}
+async function deleteNote(id){
+  await fetch(`/api/notes/${id}`,{method:'DELETE'});
+  loadNotes();
+}
+
+// ── Characters ───────────────────────────────────
+async function refreshMyChars(){
+  const st=document.getElementById('char-status');
+  st.textContent='Polling poe.ninja…';st.style.color='var(--dim)';
+  try{
+    const r=await fetch('/api/poll-characters',{method:'POST'});
+    const d=await r.json();
+    if(d.error){st.textContent=d.error;st.style.color='var(--red)';}
+    else{st.textContent='Done';st.style.color='var(--grn)';loadCharacters();}
+  }catch(e){st.textContent='Failed';st.style.color='var(--red)';}
+}
+async function loadCharacters(){
+  try{
+    const r=await fetch('/api/characters');if(!r.ok)return;
+    const data=await r.json();
+    for(const [user,info] of Object.entries(data)){
+      const col=document.getElementById('char-col-'+user);if(!col)continue;
+      col.innerHTML=renderUserChars(user,info);
+    }
+  }catch(e){}
+}
+function renderUserChars(user,info){
+  const acct=info.poe_account||'';
+  let h=`<div class="card"><div class="ctitle">${escHtml(user)} <span style="color:var(--dim);font-weight:400;">(${escHtml(acct)})</span></div>`;
+  if(info.note)h+=`<div class="note" style="font-size:11px;">${escHtml(info.note)}</div>`;
+  if(!info.characters||!info.characters.length){
+    h+=`<div class="guide-empty">No PoE2 characters on the ladder yet.</div>`;
+    if(info.last_updated)h+=`<div style="font-size:10px;color:var(--dim);text-align:center;margin-top:4px;">Last polled: ${fmtTs(info.last_updated)}</div>`;
+    h+=`</div>`;return h;
+  }
+  if(info.last_updated)h+=`<div style="font-size:10px;color:var(--dim);margin-bottom:10px;">Updated: ${fmtTs(info.last_updated)}</div>`;
+  for(const c of info.characters){
+    h+=`<div style="background:var(--bg3);border:1px solid var(--border);border-radius:var(--r);padding:10px 13px;margin-bottom:8px;">`;
+    h+=`<div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:6px;">`;
+    h+=`<span style="font-weight:700;color:var(--hi);font-size:14px;">${escHtml(c.name)}</span>`;
+    h+=`<span style="font-size:11px;color:var(--dim);">Lv ${c.level} · ${escHtml(c.class)} · ${escHtml(c.league)}</span>`;
+    h+=`</div>`;
+    if(c.items&&c.items.length){
+      for(const item of c.items){
+        const inv=item.inventoryId||'';
+        if(!['Weapon','Weapon2','Offhand','Offhand2','Helm','BodyArmour','Gloves','Boots','Belt','Ring','Ring2','Amulet'].includes(inv))continue;
+        const col=item.frameType===3?'var(--gold)':item.frameType===2?'#ff0':'var(--dim)';
+        const name=((item.name||'')+' '+(item.typeLine||'')).replace(/<[^>]+>/g,'').trim();
+        h+=`<div style="font-size:12px;padding:2px 0;display:flex;gap:6px;">`;
+        h+=`<span style="color:var(--dim);font-size:10px;min-width:70px;text-transform:uppercase;">${escHtml(inv)}</span>`;
+        h+=`<span style="color:${col};">${escHtml(name)}</span></div>`;
+      }
+    }
+    if(c.character){
+      const ch=c.character;
+      h+=`<div style="display:flex;gap:8px;margin-top:8px;flex-wrap:wrap;">`;
+      if(ch.life)h+=`<div class="sbox"><div class="sval">${ch.life}</div><div class="slbl">Life</div></div>`;
+      if(ch.energyShield)h+=`<div class="sbox"><div class="sval">${ch.energyShield}</div><div class="slbl">ES</div></div>`;
+      h+=`</div>`;
+    }
+    h+=`</div>`;
+  }
+  h+=`</div>`;return h;
+}
+
+// ── Guides ───────────────────────────────────────
+const DEFAULT_TERMS=['demon form','frost darts infernalist','infernalist CI'];
+const GUIDE_SUBS=['pathofexile2','PathOfExile2Builds','pathofexile'];
+
+function updateGuideBuildSel(){
+  const sel=document.getElementById('guide-build-sel');
+  sel.innerHTML='<option value="_default">Default (Demon Form / Infernalist)</option>';
+  _builds.forEach(b=>{
+    if(b.guide_terms&&b.guide_terms.length){
+      sel.innerHTML+=`<option value="${b.id}">${escHtml(b.name)}</option>`;
+    }
+  });
+}
+function getGuideTerms(){
+  const sel=document.getElementById('guide-build-sel');
+  if(sel.value==='_default')return DEFAULT_TERMS;
+  const b=_builds.find(b=>b.id===sel.value);
+  return b&&b.guide_terms&&b.guide_terms.length?b.guide_terms:DEFAULT_TERMS;
+}
+
+async function scanGuides(){
+  const days=parseInt(document.getElementById('guide-days').value)||7;
+  const t=days<=1?'day':days<=7?'week':'month';
+  const cutoff=Math.floor(Date.now()/1000)-days*86400;
+  const terms=getGuideTerms();
+  const el=document.getElementById('guide-results');
+  const st=document.getElementById('guide-status');
+  el.innerHTML='<div class="guide-empty">Scanning…</div>';st.textContent='';
+  const seen=new Set();const posts=[];
+  for(const sub of GUIDE_SUBS){
+    for(const q of terms){
+      try{
+        const r=await fetch(`/api/reddit/search?sub=${encodeURIComponent(sub)}&q=${encodeURIComponent(q)}&t=${t}&limit=15`);
+        if(!r.ok)continue;
+        const d=await r.json();
+        for(const c of d.data?.children||[]){
+          const p=c.data;
+          if(!seen.has(p.id)&&p.created_utc>=cutoff){seen.add(p.id);posts.push(p);}
+        }
+      }catch(e){}
+    }
+  }
+  posts.sort((a,b)=>b.score-a.score);
+  if(!posts.length){el.innerHTML='<div class="guide-empty">No posts found. Try a wider range or different terms.</div>';st.textContent='0';st.style.color='var(--red)';return;}
+  st.textContent=posts.length+' posts';st.style.color='var(--grn)';
+  el.innerHTML=posts.map(p=>{
+    const flair=p.link_flair_text?`<span style="font-size:10px;color:var(--amb);margin-left:4px;">[${escHtml(p.link_flair_text)}]</span>`:'';
+    return`<div class="guide-row"><span class="gsrc gsrc-reddit" style="margin-top:2px;">Reddit</span><div style="flex:1;min-width:0;"><a class="guide-title" href="https://www.reddit.com${p.permalink}" target="_blank">${escHtml(p.title)}${flair}</a><div class="guide-meta">r/${p.subreddit} · ${fmtAge(p.created_utc)} · <span class="guide-score">↑${p.score}</span> · ${p.num_comments} comments</div></div></div>`;
+  }).join('');
+}
+
+function openSearch(type){
+  const days=parseInt(document.getElementById('guide-days').value)||7;
+  const t=days<=1?'day':days<=7?'week':'month';
+  const ytSp=days<=1?'EgIIAg%3D%3D':days<=7?'EgIIAw%3D%3D':'EgIIBA%3D%3D';
+  const terms=getGuideTerms();
+  const q=encodeURIComponent(terms[0]||'poe2 build guide');
+  const urls={
+    'reddit-new':`https://www.reddit.com/r/pathofexile2+PathOfExile2Builds+pathofexile/search/?q=${q}&restrict_sr=on&sort=new&t=${t}`,
+    'reddit-top':`https://www.reddit.com/r/pathofexile2+PathOfExile2Builds+pathofexile/search/?q=${q}&restrict_sr=on&sort=top&t=${t}`,
+    'youtube':`https://www.youtube.com/results?search_query=${q}&sp=${ytSp}`,
+    'youtube-recent':`https://www.youtube.com/results?search_query=${q}&sp=${ytSp}`,
+    'forums':`https://www.pathofexile.com/search/results/${encodeURIComponent(terms[0]||'demon form')}/search-within/threads-posts`,
+    'maxroll':'https://maxroll.gg/poe2/build-guides',
+    'ninja':'https://poe.ninja/poe2/builds/standard?class=Witch&skills=Demon+Form&sort=dps',
+  };
+  if(urls[type])window.open(urls[type],'_blank');
+}
+
+// ── Market ───────────────────────────────────────
+async function syncNinja(){
+  const league=getLeague();
+  const btn=document.getElementById('ninja-btn');const st=document.getElementById('ninja-status');
+  btn.disabled=true;btn.textContent='…';st.style.color='var(--dim)';st.textContent='Fetching…';
+  const CMAP={'Divine Orb':'cr-div','Exalted Orb':'cr-ex','Chaos Orb':'cr-chaos','Orb of Alteration':'cr-alt','Orb of Annulment':'cr-ann','Verisium':'cr-veri','Wombgift':'cr-womb','Hiveblood':'cr-hive'};
+  let filled=0;
+  try{
+    const r=await fetch(`/api/ninja/currency?league=${encodeURIComponent(league)}`);
+    if(r.ok){const d=await r.json();(d.lines||[]).forEach(l=>{const id=CMAP[l.currencyTypeName];if(id){const v=l.chaosEquivalent>=1?Math.round(l.chaosEquivalent)+'c':l.chaosEquivalent.toFixed(2)+'c';const el=document.getElementById(id);if(el){el.value=v;P(id,v);filled++;}}});}
+  }catch(e){}
+  btn.disabled=false;btn.textContent='Sync poe.ninja';
+  if(!filled){st.style.color='var(--red)';st.textContent='No data';}
+  else{const ts=new Date().toLocaleString();S.mktTs=ts;save();document.getElementById('mkt-ts').textContent='Updated '+ts;st.style.color='var(--grn)';st.textContent=`${filled} rates`;}
+}
+
+// ── Leagues ──────────────────────────────────────
+async function fetchLeagues(){
+  const sel=document.getElementById('league');
+  try{
+    const r=await fetch('/api/leagues');if(!r.ok)return;
+    const d=await r.json();
+    const leagues=(d.result||[]).filter(l=>l.realm==='poe2');
+    if(!leagues.length)return;
+    sel.innerHTML=leagues.map(l=>`<option value="${l.id}">${l.text}</option>`).join('');
+    if(S.league&&leagues.some(l=>l.id===S.league)){sel.value=S.league;}
+    else{const temp=leagues.find(l=>!l.id.startsWith('HC')&&l.id!=='Standard'&&l.id!=='Hardcore');sel.value=temp?temp.id:'Standard';S.league=sel.value;save();}
+    document.getElementById('trade-link').href=`https://www.pathofexile.com/trade2/search/poe2/${encodeURIComponent(sel.value)}`;
+  }catch(e){}
+}
+document.getElementById('league').addEventListener('change',function(){
+  S.league=this.value;save();
+  document.getElementById('trade-link').href=`https://www.pathofexile.com/trade2/search/poe2/${encodeURIComponent(this.value.trim()||'Standard')}`;
+});
+
+// ── Init ─────────────────────────────────────────
+async function init(){
+  try{
+    const wr=await fetch('/api/whoami');
+    if(!wr.ok){location.href='/login';return;}
+    const wi=await wr.json();
+    _currentUser=wi.user;
+    document.getElementById('user-badge').textContent=wi.user;
+    const sr=await fetch('/api/state');
+    if(sr.ok){const sd=await sr.json();S=sd.state||{};}
+  }catch(e){S={};}
+  restore();
+  fetchLeagues();
+  loadBuilds();
+  loadWatchlist();
+  loadNotes();
+  loadCharacters();
+  loadFiles();
+  loadTrackedGuides();
+}
+init();
+
+// ── Files ────────────────────────────────────────
+async function loadFiles(){
+  try{const r=await fetch('/api/files');if(!r.ok)return;const d=await r.json();renderFiles(d.files||[]);}catch(e){}
+}
+function renderFiles(files){
+  const el=document.getElementById('files-list');
+  if(!files.length){el.innerHTML='<div class="guide-empty">No files shared yet.</div>';return;}
+  el.innerHTML=files.map(f=>{
+    const kb=f.size<1024?f.size+' B':Math.round(f.size/1024)+' KB';
+    return`<div class="ncard" style="display:flex;align-items:center;gap:12px;">
+      <span style="font-size:13px;color:var(--hi);flex:1;">${escHtml(f.name)}</span>
+      <span style="font-size:11px;color:var(--dim);">${kb}</span>
+      <span style="font-size:10px;color:var(--dim);">${fmtTs(f.uploaded)}</span>
+      <a class="tb" href="/api/files/${encodeURIComponent(f.name)}" download>Download</a>
+      <button class="btn xs btn-r" onclick="deleteFile('${escHtml(f.name)}')">x</button>
+    </div>`;
+  }).join('');
+}
+async function uploadFile(){
+  const input=document.getElementById('file-upload');
+  const st=document.getElementById('file-status');
+  if(!input.files.length){st.textContent='Select a file first';return;}
+  st.textContent='Uploading…';st.style.color='var(--dim)';
+  const form=new FormData();form.append('file',input.files[0]);
+  try{
+    const r=await fetch('/api/files/upload',{method:'POST',body:form});
+    const d=await r.json();
+    if(d.ok){st.textContent='Uploaded ✓';st.style.color='var(--grn)';input.value='';loadFiles();}
+    else{st.textContent=d.error||'Failed';st.style.color='var(--red)';}
+  }catch(e){st.textContent='Error';st.style.color='var(--red)';}
+}
+async function deleteFile(name){
+  if(!confirm('Delete '+name+'?'))return;
+  await fetch(`/api/files/${encodeURIComponent(name)}`,{method:'DELETE'});
+  loadFiles();
+}
+
+// ── Popular builds / demand ──────────────────────
+async function loadPopularBuilds(){
+  const st=document.getElementById('pop-status');
+  const el=document.getElementById('pop-results');
+  st.textContent='Scanning…';st.style.color='var(--dim)';
+  el.innerHTML='<div class="guide-empty">Loading…</div>';
+  try{
+    const r=await fetch('/api/market/meta');
+    if(!r.ok){st.textContent='Error';st.style.color='var(--red)';return;}
+    const d=await r.json();
+    st.textContent='Done';st.style.color='var(--grn)';
+
+    let h='';
+
+    // Tier list
+    if(d.tier_list&&d.tier_list.length){
+      h+=`<div style="font-size:10px;color:var(--gdim);text-transform:uppercase;letter-spacing:.8px;margin-bottom:6px;">Ascendancy Tier List <a href="${d.tier_list_url||'#'}" target="_blank" style="color:var(--gold);text-decoration:underline;font-size:9px;">(Mobalytics)</a></div>`;
+      const tierColors={S:'#e0c040',A:'#60b060',B:'var(--blue)',C:'var(--dim)',D:'var(--amb)',F:'var(--red)','?':'var(--gold)'};
+      const tierLabels={'?':'NEW'};
+      ['S','A','B','?'].forEach(t=>{
+        const items=d.tier_list.filter(x=>x.tier===t);
+        if(!items.length)return;
+        h+=`<div style="display:flex;align-items:center;gap:6px;margin-bottom:4px;flex-wrap:wrap;">`;
+        const label=tierLabels[t]||t;
+        h+=`<a href="https://mobalytics.gg/poe-2/tier-list" target="_blank" title="${t==='?'?'New / unranked 0.5 ascendancies':'Mobalytics '+t+'-tier ascendancies'}" style="font-size:12px;font-weight:800;color:${tierColors[t]||'var(--dim)'};min-width:20px;text-decoration:none;border-bottom:1px dashed ${tierColors[t]||'var(--dim)'};">${label}</a>`;
+        items.forEach(i=>{
+          const ascSlug=i.name.toLowerCase().replace(/\s+/g,'-').replace(/[^a-z0-9-]/g,'');
+          const ascUrl=`https://mobalytics.gg/poe-2/builds?ascendancy=${ascSlug}`;
+          const newBadge=i.new?' <span style="color:var(--gold);font-size:9px;font-weight:800;">★</span>':'';
+          h+=`<a href="${ascUrl}" target="_blank" title="Mobalytics builds for ${escHtml(i.name)}" style="background:var(--bg3);border:1px solid var(--border);border-radius:3px;padding:3px 8px;font-size:11px;text-decoration:none;"><span style="color:var(--hi);">${escHtml(i.name)}</span>${newBadge} <span style="color:var(--dim);font-size:10px;">${escHtml(i.class)}</span></a>`;
+        });
+        h+=`</div>`;
+      });
+      if(d.note)h+=`<div style="font-size:10px;color:var(--dim);margin:6px 0 14px;">${escHtml(d.note)}</div>`;
+    }
+
+    // Build guides from Mobalytics
+    if(d.builds&&d.builds.length){
+      h+=`<hr>`;
+      h+=`<div style="font-size:10px;color:var(--gdim);text-transform:uppercase;letter-spacing:.8px;margin:10px 0 6px;">Mobalytics Build Guides (${d.builds.length})</div>`;
+      h+=`<div style="font-size:10px;color:var(--dim);margin-bottom:6px;">Click <strong>+ Filter</strong> to scrape its uniques/rare bases into your loot filter.</div>`;
+      d.builds.slice(0,25).forEach(b=>{
+        h+=`<div style="display:flex;align-items:center;gap:6px;padding:3px 0;font-size:12px;">`;
+        h+=`<a href="${escHtml(b.url)}" target="_blank" style="color:var(--hi);text-decoration:none;flex:1;">${escHtml(b.name)}</a>`;
+        h+=`<button class="btn xs btn-g" style="font-size:10px;padding:2px 6px;" onclick="trackGuide(this,'${escHtml(b.url)}')">+ Filter</button>`;
+        h+=`</div>`;
+      });
+    }
+
+    el.innerHTML=h||'<div class="guide-empty">No data returned.</div>';
+  }catch(e){st.textContent='Failed';st.style.color='var(--red)';}
+
+  // Always render tracked guides below
+  loadTrackedGuides();
+}
+
+async function trackGuide(btn,url){
+  btn.disabled=true;btn.textContent='…';
+  try{
+    const r=await fetch('/api/market/tracked',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({url})});
+    if(r.ok){btn.textContent='✓';btn.style.background='var(--grn)';loadTrackedGuides();}
+    else{const d=await r.json();btn.textContent='!';btn.title=d.error||'failed';btn.disabled=false;}
+  }catch(e){btn.textContent='!';btn.disabled=false;}
+}
+
+async function loadTrackedGuides(){
+  const el=document.getElementById('tracked-guides');
+  if(!el)return;
+  try{
+    const r=await fetch('/api/market/tracked');
+    if(!r.ok){el.innerHTML='';return;}
+    const d=await r.json();
+    const tracked=d.tracked||[];
+    if(!tracked.length){el.innerHTML='<div class="guide-empty" style="font-size:11px;">No tracked guides yet. Use the + Filter button on any Mobalytics build above.</div>';return;}
+    let h=`<div style="font-size:10px;color:var(--gdim);text-transform:uppercase;letter-spacing:.8px;margin-bottom:6px;">Tracked Guides → Filter (${tracked.length})</div>`;
+    tracked.forEach(g=>{
+      h+=`<div style="background:var(--bg3);border:1px solid var(--border);border-radius:4px;padding:6px 8px;margin-bottom:6px;">`;
+      h+=`<div style="display:flex;align-items:center;gap:6px;font-size:12px;">`;
+      h+=`<a href="${escHtml(g.url)}" target="_blank" style="color:var(--hi);text-decoration:none;flex:1;">${escHtml(g.name)}</a>`;
+      h+=`<span style="font-size:10px;color:var(--dim);">${(g.uniques||[]).length}u / ${(g.rares||[]).length}r</span>`;
+      h+=`<button class="btn xs btn-g" style="font-size:10px;padding:2px 6px;" onclick="refreshTracked('${g.id}')">↻</button>`;
+      h+=`<button class="btn xs btn-g" style="font-size:10px;padding:2px 6px;color:var(--red);" onclick="removeTracked('${g.id}')">✕</button>`;
+      h+=`</div>`;
+      const items=[...(g.uniques||[]).map(u=>u.name),...(g.rares||[]).slice(0,4).map(r=>r.name)];
+      if(items.length)h+=`<div style="font-size:10px;color:var(--dim);margin-top:4px;line-height:1.4;">${items.slice(0,8).map(escHtml).join(' · ')}${items.length>8?' …':''}</div>`;
+      h+=`</div>`;
+    });
+    el.innerHTML=h;
+  }catch(e){}
+}
+
+async function refreshTracked(id){
+  const r=await fetch(`/api/market/tracked/${id}/refresh`,{method:'POST'});
+  if(r.ok)loadTrackedGuides();
+}
+
+async function removeTracked(id){
+  if(!confirm('Remove this tracked guide? Its items will no longer be in your filter export.'))return;
+  const r=await fetch(`/api/market/tracked/${id}`,{method:'DELETE'});
+  if(r.ok)loadTrackedGuides();
+}
+
+// ── Filter Preview ───────────────────────────────
+let _filterRules=[];
+
+// PoE2 in-game text size range is 18-45 → scale to 11-22 in our preview
+function scaleFontSize(n){const f=Math.max(18,Math.min(45,Number(n)||32));return Math.round(11+(f-18)*(11/27))+'px';}
+
+function rgbStr(c){
+  if(!c)return null;
+  const p=String(c).trim().split(/\s+/).map(Number);
+  if(p.length<3)return null;
+  const a=p.length>=4?(p[3]/255):1;
+  return `rgba(${p[0]},${p[1]},${p[2]},${a})`;
+}
+
+function renderItemLabel(style,label){
+  const fs=scaleFontSize(style.SetFontSize);
+  const color=rgbStr(style.SetTextColor)||'#c8c8c8';
+  const bg=rgbStr(style.SetBackgroundColor)||'rgba(0,0,0,.55)';
+  const border=rgbStr(style.SetBorderColor);
+  const borderCss=border?`2px solid ${border}`:'2px solid transparent';
+  return `<span style="display:inline-block;background:${bg};color:${color};border:${borderCss};font-size:${fs};padding:3px 10px;border-radius:2px;font-family:'Fontin SmallCaps',Georgia,serif;font-weight:600;text-shadow:1px 1px 0 #000;letter-spacing:.5px;">${escHtml(label)}</span>`;
+}
+
+function renderEffects(style){
+  let h='';
+  if(style.PlayEffect){
+    const parts=String(style.PlayEffect).split(/\s+/);
+    const colorName=parts[0];
+    const colorMap={Red:'#ff4040',Orange:'#ff9020',Yellow:'#ffe040',Green:'#40d060',Blue:'#4080ff',Brown:'#a06030',White:'#ffffff',Cyan:'#40e0e0',Grey:'#808080',Purple:'#a040ff'};
+    const c=colorMap[colorName]||'#888';
+    h+=`<span title="Beam: ${escHtml(style.PlayEffect)}" style="display:inline-block;width:3px;height:18px;background:${c};box-shadow:0 0 6px ${c};vertical-align:middle;margin-right:6px;"></span>`;
+  }
+  if(style.MinimapIcon){
+    const parts=String(style.MinimapIcon).split(/\s+/);
+    const size=parts[0]||'1', colorName=parts[1]||'White', shape=parts[2]||'Circle';
+    const colorMap={Red:'#ff4040',Orange:'#ff9020',Yellow:'#ffe040',Green:'#40d060',Blue:'#4080ff',Brown:'#a06030',White:'#ffffff',Cyan:'#40e0e0',Grey:'#808080',Purple:'#a040ff'};
+    const c=colorMap[colorName]||'#888';
+    const px=size==='0'?12:size==='1'?10:8;
+    let shapeCss='border-radius:50%;';
+    if(shape==='Square')shapeCss='border-radius:1px;';
+    else if(shape==='Diamond')shapeCss='border-radius:1px;transform:rotate(45deg);';
+    else if(shape==='Triangle')shapeCss='clip-path:polygon(50% 0,100% 100%,0 100%);border-radius:0;';
+    else if(shape==='Star')shapeCss='clip-path:polygon(50% 0,61% 35%,98% 35%,68% 57%,79% 91%,50% 70%,21% 91%,32% 57%,2% 35%,39% 35%);border-radius:0;';
+    h+=`<span title="Minimap: ${escHtml(style.MinimapIcon)}" style="display:inline-block;width:${px}px;height:${px}px;background:${c};${shapeCss}vertical-align:middle;margin-right:6px;"></span>`;
+  }
+  if(style.PlayAlertSoundPositional||style.PlayAlertSound){
+    const s=style.PlayAlertSoundPositional||style.PlayAlertSound;
+    h+=`<span title="Sound: ${escHtml(s)}" style="font-size:11px;color:var(--gold);margin-right:6px;">🔊</span>`;
+  }
+  return h;
+}
+
+function renderConditions(c){
+  const parts=[];
+  if(c.Rarity)parts.push(`<span style="color:var(--gold);">${escHtml(String(c.Rarity))}</span>`);
+  if(c.Class)parts.push(`<span>Class: ${escHtml(Array.isArray(c.Class)?c.Class.join(' '):c.Class)}</span>`);
+  if(c.BaseType){
+    const types=Array.isArray(c.BaseType)?c.BaseType:[c.BaseType];
+    parts.push(`<span title="${escHtml(types.join(', '))}">BaseType: ${types.length} item${types.length===1?'':'s'}</span>`);
+  }
+  return parts.join(' · ');
+}
+
+async function loadFilterPreview(){
+  const el=document.getElementById('fp-rules');
+  el.innerHTML='<div class="guide-empty">Loading…</div>';
+  try{
+    const r=await fetch('/api/filter/export');
+    if(!r.ok){el.innerHTML='<div class="guide-empty" style="color:var(--red);">Failed to load filter export.</div>';return;}
+    const d=await r.json();
+    _filterRules=d.rules||[];
+    if(!_filterRules.length){
+      el.innerHTML='<div class="guide-empty">No filter rules. Add items to a build or track a Mobalytics guide first.</div>';
+      return;
+    }
+    let h=`<div style="font-size:11px;color:var(--dim);margin-bottom:10px;">${_filterRules.length} rule${_filterRules.length===1?'':'s'} from ${(d.builds||[]).length} build${(d.builds||[]).length===1?'':'s'} · generated ${escHtml((d.generated||'').slice(0,19).replace('T',' '))}</div>`;
+    _filterRules.forEach((rule,i)=>{
+      const types=Array.isArray(rule.conditions?.BaseType)?rule.conditions.BaseType:(rule.conditions?.BaseType?[rule.conditions.BaseType]:[]);
+      const labels=types.length?types:[rule.comment||'Sample Item'];
+      const actionColor=rule.action==='Hide'?'var(--red)':'var(--grn)';
+      const initial=Math.min(labels.length,12);
+      h+=`<div class="card" style="margin-bottom:10px;padding:10px 12px;">`;
+      h+=`<div style="display:flex;align-items:center;gap:8px;margin-bottom:8px;font-size:12px;">`;
+      h+=`<span style="background:${actionColor};color:#000;padding:1px 6px;border-radius:2px;font-weight:700;font-size:10px;">${escHtml(rule.action||'Show')}</span>`;
+      h+=`<span style="color:var(--hi);font-weight:600;flex:1;">${escHtml(rule.comment||'(unnamed)')}</span>`;
+      h+=`<span style="color:var(--dim);font-size:11px;">${labels.length} item${labels.length===1?'':'s'} · #${i+1}</span>`;
+      h+=`</div>`;
+      h+=`<div style="background:#0a0805;padding:10px 10px 4px;border-radius:3px;border:1px solid var(--bg3);margin-bottom:6px;">`;
+      h+=`<div style="display:flex;flex-wrap:wrap;align-items:center;gap:6px 8px;">`;
+      h+=renderEffects(rule.style||{});
+      labels.slice(0,initial).forEach(lab=>{
+        h+=`<span style="margin-bottom:6px;display:inline-block;">${renderItemLabel(rule.style||{},lab)}</span>`;
+      });
+      h+=`</div>`;
+      if(labels.length>initial){
+        h+=`<details style="margin-top:4px;"><summary style="font-size:10px;color:var(--gold);cursor:pointer;padding:4px 0;">+ ${labels.length-initial} more</summary>`;
+        h+=`<div style="display:flex;flex-wrap:wrap;gap:6px 8px;margin-top:6px;">`;
+        labels.slice(initial).forEach(lab=>{h+=`<span style="display:inline-block;">${renderItemLabel(rule.style||{},lab)}</span>`;});
+        h+=`</div></details>`;
+      }
+      h+=`</div>`;
+      h+=`<div style="font-size:10px;color:var(--dim);">${renderConditions(rule.conditions||{})}</div>`;
+      h+=`</div>`;
+    });
+    el.innerHTML=h;
+  }catch(e){el.innerHTML='<div class="guide-empty" style="color:var(--red);">Error: '+escHtml(String(e))+'</div>';}
+}
+
+// Find every rule whose BaseType list has an item whose text contains the
+// query (case-insensitive), or whose query is contained in the BaseType.
+// Either direction works so "head" finds "Headhunter" and "Two-Stone Ring"
+// finds the "Two-Stone" entry.
+function findMatchingRules(query,rarity){
+  const q=(query||'').trim().toLowerCase();
+  if(!q)return [];
+  const out=[];
+  for(let i=0;i<_filterRules.length;i++){
+    const rule=_filterRules[i];
+    const c=rule.conditions||{};
+    if(rarity&&c.Rarity&&String(c.Rarity).toLowerCase()!==rarity.toLowerCase())continue;
+    const types=Array.isArray(c.BaseType)?c.BaseType:(c.BaseType?[c.BaseType]:[]);
+    if(!types.length){
+      // Class-only rule — match if query mentions the class word
+      const classes=Array.isArray(c.Class)?c.Class:(c.Class?[c.Class]:[]);
+      const cmatch=classes.some(cl=>q.includes(cl.toLowerCase())||cl.toLowerCase().includes(q));
+      if(cmatch)out.push({rule,index:i,matchedItems:[]});
+      continue;
+    }
+    const matched=types.filter(t=>{
+      const lt=t.toLowerCase();
+      return lt.includes(q)||q.includes(lt);
+    });
+    if(matched.length)out.push({rule,index:i,matchedItems:matched});
+  }
+  return out;
+}
+
+function testFilterItem(){
+  const name=document.getElementById('fp-name').value.trim();
+  const base=document.getElementById('fp-base').value.trim();
+  const rarity=document.getElementById('fp-rarity').value;
+  const out=document.getElementById('fp-test-result');
+  if(!name&&!base){out.innerHTML='<div class="guide-empty" style="font-size:11px;">Enter an item name or base type.</div>';return;}
+  if(!_filterRules.length){out.innerHTML='<div class="guide-empty" style="font-size:11px;color:var(--amb);">No filter rules loaded. Click ↻ Reload above.</div>';return;}
+
+  // Combine name + base into a single query — try each independently and merge
+  const seen=new Set();
+  const matches=[];
+  for(const q of [name,base].filter(Boolean)){
+    findMatchingRules(q,rarity).forEach(m=>{
+      const k=m.index;
+      if(!seen.has(k)){seen.add(k);matches.push(m);}
+    });
+  }
+
+  if(!matches.length){
+    out.innerHTML=`<div style="background:var(--bg3);padding:10px;border-radius:3px;border-left:3px solid var(--dim);"><div style="font-size:12px;color:var(--dim);">No rule matches — item would fall through to NeverSink defaults.</div></div>`;
+    return;
+  }
+
+  // The "winning" rule in-game is the first one in order — show it large,
+  // then list other candidates as also-rans.
+  const top=matches[0];
+  const display=name||base;
+  const actionColor=top.rule.action==='Hide'?'var(--red)':'var(--grn)';
+  let h=`<div style="background:var(--bg3);padding:10px;border-radius:3px;border-left:3px solid ${actionColor};">`;
+  h+=`<div style="font-size:11px;color:var(--dim);margin-bottom:6px;"><span style="background:${actionColor};color:#000;padding:1px 5px;border-radius:2px;font-weight:700;font-size:10px;">${escHtml(top.rule.action||'Show')}</span> first match: <strong style="color:var(--hi);">${escHtml(top.rule.comment||'')}</strong> (rule #${top.index+1})</div>`;
+  h+=`<div style="display:flex;flex-wrap:wrap;align-items:center;gap:6px;background:#0a0805;padding:8px 10px;border-radius:3px;">`;
+  h+=renderEffects(top.rule.style||{});
+  // Render each matched BaseType so user sees what their query actually hit
+  const itemsToShow=top.matchedItems.length?top.matchedItems:[display];
+  itemsToShow.slice(0,8).forEach(lab=>{h+=renderItemLabel(top.rule.style||{},lab);});
+  h+=`</div>`;
+  if(matches.length>1){
+    h+=`<div style="font-size:10px;color:var(--dim);margin-top:8px;">Also matched by ${matches.length-1} other rule${matches.length===2?'':'s'}: ${matches.slice(1).map(m=>`<span style="color:var(--gdim);">#${m.index+1} ${escHtml(m.rule.comment||'')}</span>`).join(' · ')}</div>`;
+  }
+  h+=`</div>`;
+  out.innerHTML=h;
+}
+</script>
+</body>
+</html>
