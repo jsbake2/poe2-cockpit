@@ -1638,11 +1638,157 @@ async function renderProfitTab() {
       </button>
     </div>
     <div id="profit-status" style="color:var(--muted);font-size:11px;margin-top:8px;min-height:14px"></div>
+
+    <!-- ===== Chase Rares panel (under Profit) ===== -->
+    <div id="chase-panel" style="margin-top:20px;border-top:2px solid var(--gold-dim);padding-top:14px">
+      <div style="display:flex;align-items:center;gap:10px;margin-bottom:8px">
+        <div style="color:var(--gold);font-size:11px;text-transform:uppercase;letter-spacing:2px;flex:1">
+          ⛏ Chase Rares — bases worth chasing
+        </div>
+        <button id="btn-chase-refresh" onclick="refreshChase(false)"
+          style="background:var(--panel-2);color:var(--text);border:1px solid var(--border);border-radius:3px;padding:6px 10px;font-size:11px;cursor:pointer">
+          Refresh
+        </button>
+        <button id="btn-chase-refresh-force" onclick="refreshChase(true)" title="Re-fetch maxroll guides ignoring cache"
+          style="background:var(--panel-2);color:var(--muted);border:1px solid var(--border);border-radius:3px;padding:6px 10px;font-size:11px;cursor:pointer">
+          Force
+        </button>
+      </div>
+      <p style="color:var(--muted);font-size:11px;margin-bottom:8px;line-height:1.4">
+        Aggregated from maxroll's expert-curated PoE2 build guides. Uncheck rows
+        that drop too often to be expensive, then they get filtered out of the
+        loot filter on next build.
+      </p>
+      <div id="chase-meta" style="color:var(--muted);font-size:11px;margin-bottom:8px"></div>
+      <div id="chase-status" style="color:var(--gold);font-size:11px;margin-bottom:8px;min-height:14px"></div>
+      <div id="chase-table" style="background:var(--panel);border:1px solid var(--border);border-radius:3px"></div>
+      <div id="chase-warnings" style="color:var(--muted);font-size:10px;margin-top:8px"></div>
+    </div>
   `;
 
   $('profit-search').oninput = onProfitSearch;
   $('btn-build-filter').onclick = buildProfitFilter;
+
+  loadChase();
 }
+
+// --- Chase Rares -------------------------------------------------------
+
+state.chase = null;
+
+async function loadChase() {
+  try {
+    const d = await api('/v2/api/chase');
+    state.chase = d;
+    renderChase();
+  } catch (e) {
+    $('chase-table').innerHTML = `<div style="padding:10px;color:var(--red);font-size:11px">${escHtml(e.message || String(e))}</div>`;
+  }
+}
+
+async function refreshChase(force) {
+  $('chase-status').textContent = force ? 'Re-fetching maxroll corpus…' : 'Refreshing chase list…';
+  $('btn-chase-refresh').disabled = true;
+  $('btn-chase-refresh-force').disabled = true;
+  try {
+    const r = await fetch('/v2/api/chase/refresh', {
+      method: 'POST', credentials: 'same-origin',
+      headers: {'Content-Type':'application/json'},
+      body: JSON.stringify({force: !!force}),
+    });
+    const d = await r.json();
+    if (!r.ok) {
+      $('chase-status').textContent = d.error || ('HTTP ' + r.status);
+      return;
+    }
+    state.chase = d;
+    $('chase-status').textContent = '';
+    renderChase();
+  } catch (e) {
+    $('chase-status').textContent = e.message || String(e);
+  } finally {
+    $('btn-chase-refresh').disabled = false;
+    $('btn-chase-refresh-force').disabled = false;
+  }
+}
+
+function renderChase() {
+  const c = state.chase;
+  const meta = $('chase-meta');
+  const table = $('chase-table');
+  const warnings = $('chase-warnings');
+  if (!c) { table.innerHTML = ''; return; }
+  if (!c.entries || c.entries.length === 0) {
+    meta.textContent = `Nothing scanned yet for ${c.league || 'this league'}. Click Refresh.`;
+    table.innerHTML = '';
+    warnings.innerHTML = '';
+    return;
+  }
+  const when = c.generated_at ? new Date(c.generated_at * 1000).toLocaleString() : '—';
+  meta.textContent = `${c.entries.length} bases · ${c.guides_with_data}/${c.guides_scanned} guides parsed · refreshed ${when}`;
+
+  // Header
+  const header = `
+    <div style="display:grid;grid-template-columns:30px 90px 1fr 60px 220px 110px 70px;gap:6px;padding:6px 10px;border-bottom:1px solid var(--border);color:var(--muted);font-size:10px;text-transform:uppercase;letter-spacing:1px">
+      <div>On</div><div>Slot</div><div>Base</div><div>×Builds</div><div>Top required</div><div>Price</div><div></div>
+    </div>`;
+
+  const rows = c.entries.slice(0, 80).map(e => {
+    const topMods = Object.entries(e.required_weights || {})
+      .sort((a,b) => b[1] - a[1])
+      .slice(0, 3)
+      .map(([m,w]) => `${m.replace(/^pseudo\./,'')} <span style="color:var(--muted)">×${w}</span>`)
+      .join(', ');
+    const priceTxt = (e.median_price != null)
+      ? `${e.median_price.toFixed(1)} ${escHtml(e.median_price_currency || '')}`
+      : (e.listing_count ? `${e.listing_count} listed` : '—');
+    const checked = e.disabled ? '' : 'checked';
+    const dim = e.disabled ? 'opacity:0.4' : '';
+    return `
+      <div style="display:grid;grid-template-columns:30px 90px 1fr 60px 220px 110px 70px;gap:6px;padding:6px 10px;border-bottom:1px solid var(--border);align-items:center;font-size:11px;${dim}">
+        <div><input type="checkbox" ${checked} data-chase-key="${escHtml(e.key)}" class="chase-toggle" style="margin:0"></div>
+        <div style="color:var(--muted)">${escHtml(e.slot)}</div>
+        <div style="color:var(--text)"><b>${escHtml(e.base)}</b></div>
+        <div style="color:var(--text)">${e.count} <span style="color:var(--muted)">(${Math.round(e.share*100)}%)</span></div>
+        <div style="color:var(--muted);font-size:10px;line-height:1.3">${topMods || '<span style="color:var(--red)">(no mapped mods)</span>'}</div>
+        <div style="color:var(--text)">${priceTxt}</div>
+        <div>${e.trade_url ? `<a href="${escHtml(e.trade_url)}" target="_blank" rel="noopener" style="color:var(--gold);font-size:11px">Trade↗</a>` : ''}</div>
+      </div>`;
+  }).join('');
+
+  table.innerHTML = header + rows;
+
+  // Hook up toggles
+  table.querySelectorAll('.chase-toggle').forEach(cb => {
+    cb.addEventListener('change', () => toggleChaseRow(cb.dataset.chaseKey, !cb.checked));
+  });
+
+  if (c.unmapped_mods && c.unmapped_mods.length) {
+    warnings.innerHTML = `${c.unmapped_mods.length} mod IDs aren't mapped to trade2 yet — add to <code>data/chase_mod_map.json</code> for richer trade searches: ${c.unmapped_mods.slice(0,8).map(escHtml).join(', ')}${c.unmapped_mods.length > 8 ? '…' : ''}`;
+  } else {
+    warnings.innerHTML = '';
+  }
+}
+
+async function toggleChaseRow(key, disabled) {
+  try {
+    const r = await fetch('/v2/api/chase/disabled', {
+      method: 'PUT', credentials: 'same-origin',
+      headers: {'Content-Type':'application/json'},
+      body: JSON.stringify({key, disabled, league: state.chase && state.chase.league}),
+    });
+    const d = await r.json();
+    if (!r.ok) { alert(d.error || 'Failed'); return; }
+    // Update local state then re-render so the dim/opacity flips.
+    const entry = (state.chase.entries || []).find(e => e.key === key);
+    if (entry) entry.disabled = disabled;
+    renderChase();
+  } catch (e) {
+    alert(e.message || String(e));
+  }
+}
+window.refreshChase = refreshChase;
+window.toggleChaseRow = toggleChaseRow;
 
 function onProfitSearch(e) {
   const q = (e.target.value || '').toLowerCase().trim();

@@ -16,7 +16,8 @@ import json
 import time
 from urllib.parse import quote
 
-from . import filter_validate, leveling, news, pob, profit, scanner, store, trade_stats, tree
+from . import (chase, filter_validate, leveling, news, pob, profit, scanner,
+                store, trade_stats, tree)
 
 ROOT = Path(__file__).resolve().parent.parent
 STATIC = ROOT / "static"
@@ -1035,6 +1036,34 @@ async def build_profit_filter(request: Request):
                     "slot": slot, "base": it.base, "must_mods": must_mods,
                 })
 
+    # Merge enabled chase entries into the rare_items list — these are bases
+    # that maxroll's expert guides recommend chasing, ranked by frequency.
+    # Disabled entries (false positives, cheap drops the user vetoed) are
+    # skipped. We pass the top required mod IDs as informational `must_mods`
+    # since PoE2 filter syntax can't gate on numeric mod values anyway.
+    league = _league_from_state(s, user)
+    chase_snap = chase.load_snapshot(league)
+    if chase_snap is not None:
+        disabled = s.chase_disabled.get(league, {})
+        existing_bases = {(r["slot"], r["base"]) for r in rare_items}
+        mod_map = chase.load_mod_map()
+        for entry in chase_snap.entries:
+            if disabled.get(entry.key):
+                continue
+            if (entry.slot, entry.base) in existing_bases:
+                continue
+            top_required = sorted(entry.required_weights.items(),
+                                  key=lambda x: -x[1])[:3]
+            must_mods = [
+                (mod_map.get(mid) or {}).get("text") or mid
+                for mid, _w in top_required
+            ]
+            rare_items.append({
+                "slot": entry.slot,
+                "base": entry.base,
+                "must_mods": must_mods,
+            })
+
     try:
         info = profit.inject_into_filter(names, src, dest,
                                          build_names=build_names,
@@ -1099,6 +1128,108 @@ async def validate_profit_filter(request: Request):
             "explanation": hierarchy.explanation,
         },
     }
+
+
+# --- Chase rares (maxroll-derived rare-base recommendations) -------------
+
+def _league_from_state(s: store.State, user: str) -> str:
+    """Best-effort: read the active league from the per-user state file. Falls
+    back to a literal 'Standard' so the chase tool still works for solo use."""
+    try:
+        user_path = ROOT / "data" / f"{user}.json"
+        if user_path.exists():
+            d = json.loads(user_path.read_text(encoding="utf-8"))
+            league = (d.get("state") or {}).get("league") or ""
+            if league:
+                return league
+    except Exception:
+        pass
+    return "Standard"
+
+
+def _chase_snapshot_payload(snap: chase.ChaseSnapshot, disabled: dict[str, bool]
+                            ) -> dict:
+    """Serialise a snapshot for the UI, attaching the user's disabled flags."""
+    entries = []
+    for e in snap.entries:
+        d = asdict(e)
+        d["disabled"] = bool(disabled.get(e.key, False))
+        entries.append(d)
+    return {
+        "league": snap.league,
+        "generated_at": snap.generated_at,
+        "guides_scanned": snap.guides_scanned,
+        "guides_with_data": snap.guides_with_data,
+        "skipped_guides": snap.skipped_guides,
+        "unmapped_mods": snap.unmapped_mods,
+        "entries": entries,
+    }
+
+
+@router.get("/api/chase")
+async def get_chase(request: Request):
+    """Return the current chase snapshot for the user's active league. If no
+    snapshot exists yet, returns ok:true with entries:[] — UI can prompt
+    refresh."""
+    user = _require_user(request)
+    if not user:
+        return JSONResponse({"error": "unauthorized"}, status_code=401)
+    s = store.load()
+    league = _league_from_state(s, user)
+    snap = chase.load_snapshot(league)
+    disabled = s.chase_disabled.get(league, {})
+    if snap is None:
+        return {"ok": True, "league": league, "entries": [],
+                "generated_at": 0, "guides_scanned": 0, "guides_with_data": 0,
+                "skipped_guides": [], "unmapped_mods": []}
+    return _chase_snapshot_payload(snap, disabled)
+
+
+@router.post("/api/chase/refresh")
+async def refresh_chase(request: Request):
+    """Kick the full pipeline: scrape maxroll guides + aggregate + optional
+    server-side price fetch (gated on POE_SESSID). Blocking — typically 5-30s
+    depending on cache state."""
+    user = _require_user(request)
+    if user != "jbaker":
+        return JSONResponse({"error": "jbaker-only"}, status_code=403)
+    body = await request.json()
+    force = bool(body.get("force"))
+    s = store.load()
+    league = body.get("league") or _league_from_state(s, user)
+    do_prices = bool(body.get("do_prices", True))
+    try:
+        snap = chase.refresh_snapshot(
+            league=league, force_refresh=force, do_prices=do_prices,
+        )
+    except Exception as e:
+        return JSONResponse(
+            {"error": f"refresh failed ({type(e).__name__}): {e}"}, status_code=500
+        )
+    disabled = s.chase_disabled.get(league, {})
+    return _chase_snapshot_payload(snap, disabled)
+
+
+@router.put("/api/chase/disabled")
+async def set_chase_disabled(request: Request):
+    """Toggle a chase row's disabled flag. Body: {league, key, disabled}."""
+    user = _require_user(request)
+    if user != "jbaker":
+        return JSONResponse({"error": "jbaker-only"}, status_code=403)
+    body = await request.json()
+    key = (body.get("key") or "").strip()
+    if not key:
+        return JSONResponse({"error": "missing 'key'"}, status_code=400)
+    s = store.load()
+    league = (body.get("league") or _league_from_state(s, user)).strip()
+    disabled = bool(body.get("disabled"))
+    bucket = s.chase_disabled.setdefault(league, {})
+    if disabled:
+        bucket[key] = True
+    else:
+        bucket.pop(key, None)
+    store.save(s)
+    return {"ok": True, "league": league, "key": key, "disabled": disabled}
 
 
 # --- Leveling build library (scraped from maxroll) -----------------------
