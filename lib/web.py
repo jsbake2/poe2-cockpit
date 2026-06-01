@@ -286,6 +286,106 @@ async def set_active_build_variant(build_id: str, request: Request):
     }
 
 
+def _next_variant_id(b: store.Build) -> str:
+    """Allocate the next free `vN` id within a build's variant list."""
+    used = {v.id for v in b.build_variants}
+    n = len(b.build_variants) + 1
+    while f"v{n}" in used:
+        n += 1
+    return f"v{n}"
+
+
+@router.post("/api/builds/{build_id}/variants")
+async def add_build_variant(build_id: str, request: Request):
+    """Append a new BuildVariant to an existing build, sourced from a fresh
+    PoB code/URL. If the pasted PoB has multiple sets, `variant_id` picks
+    which one — otherwise the first is used. Idempotent only at the (pob,
+    variant_id) granularity; calling twice creates two siblings."""
+    user = _require_user(request)
+    if user != "jbaker":
+        return JSONResponse({"error": "jbaker-only"}, status_code=403)
+    body = await request.json()
+    text = (body.get("pob") or "").strip()
+    if not text:
+        return JSONResponse({"error": "missing 'pob'"}, status_code=400)
+
+    try:
+        pob_variants, raw_code = pob.list_variants_from_code(text)
+    except pob.PoBImportError as e:
+        return JSONResponse({"error": f"PoB parse failed: {e}"}, status_code=400)
+
+    requested_vid = (body.get("variant_id") or "").strip()
+    if requested_vid:
+        spec = next((v for v in pob_variants if v.id == requested_vid), None)
+        if spec is None:
+            return JSONResponse(
+                {"error": f"unknown variant_id {requested_vid!r}"}, status_code=400
+            )
+    else:
+        spec = pob_variants[0]
+
+    try:
+        parsed = pob.import_build(raw_code, variant=spec)
+    except pob.PoBImportError as e:
+        return JSONResponse({"error": f"PoB parse failed: {e}"}, status_code=400)
+
+    s = store.load()
+    b = s.builds.get(build_id)
+    if not b:
+        return JSONResponse({"error": "build not found"}, status_code=404)
+
+    new_id = _next_variant_id(b)
+    label = (body.get("label") or "").strip() or spec.label or f"Variant {new_id}"
+    tree_viewer_url = (body.get("tree_viewer_url") or "").strip()
+
+    bv = store.new_variant_from_pob_import(
+        parsed, variant_id=new_id, label=label,
+        tree_viewer_url=tree_viewer_url, pob_variant_spec=spec,
+    )
+    b.build_variants.append(bv)
+    # Replace the build's stored PoB code with this freshly-pasted one — the
+    # new variant is sourced from it, and subsequent re-exports should reflect
+    # this paste. Existing variants keep their data (already snapshotted on
+    # their own dataclasses), so this is non-destructive.
+    if raw_code:
+        b.pob_code = raw_code
+    store.save(s)
+    return {"ok": True, "build_id": build_id, "variant": asdict(bv)}
+
+
+@router.delete("/api/builds/{build_id}/variants/{variant_id}")
+async def delete_build_variant(build_id: str, variant_id: str, request: Request):
+    """Remove a variant. Refuses to delete the last remaining variant. If the
+    deleted variant was active, the next remaining variant becomes active."""
+    user = _require_user(request)
+    if user != "jbaker":
+        return JSONResponse({"error": "jbaker-only"}, status_code=403)
+    s = store.load()
+    b = s.builds.get(build_id)
+    if not b:
+        return JSONResponse({"error": "build not found"}, status_code=404)
+    if len(b.build_variants) <= 1:
+        return JSONResponse(
+            {"error": "can't delete the last variant — delete the whole build instead"},
+            status_code=400,
+        )
+    target = next((v for v in b.build_variants if v.id == variant_id), None)
+    if target is None:
+        return JSONResponse({"error": "variant not found"}, status_code=404)
+    b.build_variants = [v for v in b.build_variants if v.id != variant_id]
+    # If we just removed the active one, pick the first remaining as new active
+    # and re-mirror flat fields from it.
+    if b.active_build_variant_id == variant_id:
+        b.active_build_variant_id = b.build_variants[0].id
+        store.apply_active_variant(b)
+    store.save(s)
+    return {
+        "ok": True, "build_id": build_id,
+        "active_build_variant_id": b.active_build_variant_id,
+        "remaining": [{"id": v.id, "label": v.label} for v in b.build_variants],
+    }
+
+
 @router.put("/api/builds/{build_id}/variants/{variant_id}")
 async def update_build_variant(build_id: str, variant_id: str, request: Request):
     """Edit a build variant's user-facing fields (label, poe.ninja URL).

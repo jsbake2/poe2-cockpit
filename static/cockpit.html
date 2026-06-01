@@ -692,6 +692,56 @@
     </div>
   </div>
 
+  <div class="modal-bg" id="add-variant-modal">
+    <div class="modal" style="width:560px">
+      <h2>Add variant to this build</h2>
+      <p style="color:var(--muted);font-size:12px;margin-bottom:10px">
+        Paste a PoB code or URL. If it contains multiple variants, you'll
+        pick which one to append.
+      </p>
+      <label>PoB code or share URL</label>
+      <textarea id="addvar-pob" placeholder="eAHtfW... OR https://pobb.in/abc"></textarea>
+      <div style="display:flex;gap:6px;margin-top:6px">
+        <button id="btn-addvar-preview" onclick="addVariantPreview()" style="background:var(--panel-2);color:var(--text);border:1px solid var(--border);border-radius:3px;padding:6px 10px;font-size:11px;cursor:pointer">Preview</button>
+        <div style="flex:1"></div>
+      </div>
+      <div id="addvar-picker" style="margin-top:10px;display:none">
+        <label>Pick variant from the pasted PoB</label>
+        <select id="addvar-which" style="width:100%;font-size:12px;padding:4px 6px"></select>
+      </div>
+      <div style="display:flex;gap:8px;margin-top:10px">
+        <div style="flex:1">
+          <label>Label</label>
+          <input type="text" id="addvar-label" placeholder="auto from variant title">
+        </div>
+        <div style="flex:1">
+          <label>poe.ninja URL</label>
+          <input type="text" id="addvar-url" placeholder="optional">
+        </div>
+      </div>
+      <div class="err" id="addvar-err"></div>
+      <div class="actions">
+        <button onclick="closeAddVariant()">Cancel</button>
+        <button class="primary" onclick="submitAddVariant()">Add variant</button>
+      </div>
+    </div>
+  </div>
+
+  <div class="modal-bg" id="manage-variants-modal">
+    <div class="modal" style="width:680px">
+      <h2>Manage variants</h2>
+      <p style="color:var(--muted);font-size:12px;margin-bottom:10px">
+        Rename or delete variants. The active variant is marked ●. Can't
+        delete the last one.
+      </p>
+      <div id="manage-variants-rows"></div>
+      <div class="err" id="manage-err"></div>
+      <div class="actions">
+        <button class="primary" onclick="closeManageVariants()">Close</button>
+      </div>
+    </div>
+  </div>
+
   <div class="modal-bg" id="variant-wizard-modal">
     <div class="modal" style="width:720px">
       <h2>Multi-variant PoB — set up each variant</h2>
@@ -1117,6 +1167,173 @@ async function switchActiveVariant(variantId) {
 }
 window.switchActiveVariant = switchActiveVariant;
 
+// --- Add variant to existing build -------------------------------------
+let _addVarPreview = null;  // {variants: [...]} from /preview, after click
+
+function openAddVariant() {
+  if (!state.build) return;
+  $('addvar-pob').value = '';
+  $('addvar-label').value = '';
+  $('addvar-url').value = '';
+  $('addvar-err').textContent = '';
+  $('addvar-picker').style.display = 'none';
+  $('addvar-which').innerHTML = '';
+  _addVarPreview = null;
+  $('add-variant-modal').classList.add('open');
+  setTimeout(() => $('addvar-pob').focus(), 50);
+}
+function closeAddVariant() { $('add-variant-modal').classList.remove('open'); }
+
+async function addVariantPreview() {
+  const pob = $('addvar-pob').value.trim();
+  if (!pob) { $('addvar-err').textContent = 'Paste a PoB code or URL first.'; return; }
+  $('addvar-err').textContent = '';
+  try {
+    const r = await fetch('/v2/api/builds/preview', {
+      method: 'POST', credentials: 'same-origin',
+      headers: {'Content-Type':'application/json'},
+      body: JSON.stringify({pob}),
+    });
+    const d = await r.json();
+    if (!r.ok) { $('addvar-err').textContent = d.error || ('HTTP ' + r.status); return; }
+    _addVarPreview = d;
+    const picker = $('addvar-picker');
+    const which = $('addvar-which');
+    which.innerHTML = '';
+    d.variants.forEach((v, i) => {
+      const opt = document.createElement('option');
+      opt.value = v.id;
+      opt.textContent = `${v.label} (id ${v.id})`;
+      if (i === 0) opt.selected = true;
+      which.appendChild(opt);
+    });
+    picker.style.display = d.variants.length > 1 ? 'block' : 'none';
+    // If only one variant and label box is empty, prefill it
+    if (d.variants.length === 1 && !$('addvar-label').value.trim()) {
+      $('addvar-label').value = d.variants[0].label || '';
+    } else if (d.variants.length > 1 && !$('addvar-label').value.trim()) {
+      $('addvar-label').value = d.variants[0].label || '';
+      which.addEventListener('change', () => {
+        const v = d.variants.find(x => x.id === which.value);
+        if (v) $('addvar-label').value = v.label || '';
+      });
+    }
+  } catch (e) {
+    $('addvar-err').textContent = e.message || String(e);
+  }
+}
+
+async function submitAddVariant() {
+  if (!state.build) return;
+  const pob = $('addvar-pob').value.trim();
+  if (!pob) { $('addvar-err').textContent = 'Paste a PoB code or URL first.'; return; }
+  // If user never clicked Preview, server picks first variant. That's fine.
+  const variant_id = $('addvar-picker').style.display !== 'none'
+    ? $('addvar-which').value : '';
+  const label = $('addvar-label').value.trim();
+  const tree_viewer_url = $('addvar-url').value.trim();
+  $('addvar-err').textContent = '';
+  try {
+    const r = await fetch(`/v2/api/builds/${state.build.id}/variants`, {
+      method: 'POST', credentials: 'same-origin',
+      headers: {'Content-Type':'application/json'},
+      body: JSON.stringify({pob, variant_id, label, tree_viewer_url}),
+    });
+    const d = await r.json();
+    if (!r.ok) { $('addvar-err').textContent = d.error || ('HTTP ' + r.status); return; }
+    closeAddVariant();
+    await loadBuild(state.build.id);
+    // Optionally switch to the newly-added variant
+    if (d.variant && d.variant.id) {
+      await switchActiveVariant(d.variant.id);
+    }
+  } catch (e) {
+    $('addvar-err').textContent = e.message || String(e);
+  }
+}
+window.openAddVariant = openAddVariant;
+window.closeAddVariant = closeAddVariant;
+window.addVariantPreview = addVariantPreview;
+window.submitAddVariant = submitAddVariant;
+
+// --- Manage variants (rename + delete) ---------------------------------
+
+function openManageVariants() {
+  if (!state.build) return;
+  $('manage-err').textContent = '';
+  renderManageVariants();
+  $('manage-variants-modal').classList.add('open');
+}
+function closeManageVariants() { $('manage-variants-modal').classList.remove('open'); }
+
+function renderManageVariants() {
+  const b = state.build;
+  const rows = $('manage-variants-rows');
+  rows.innerHTML = '';
+  const bvs = b.build_variants || [];
+  bvs.forEach((v) => {
+    const isActive = v.id === b.active_build_variant_id;
+    const row = document.createElement('div');
+    row.style.cssText = 'display:grid;grid-template-columns:20px 100px 1fr 2fr 80px;gap:8px;padding:6px 4px;border-bottom:1px solid var(--border);align-items:center;font-size:12px';
+    row.innerHTML = `
+      <div style="color:${isActive ? 'var(--gold)' : 'var(--muted)'};font-size:14px">${isActive ? '●' : '·'}</div>
+      <div style="color:var(--muted)">${escHtml(v.id)}</div>
+      <input type="text" data-mv-field="label" data-mv-id="${escHtml(v.id)}" value="${escHtml(v.label || '')}" style="font-size:12px;padding:3px 6px">
+      <input type="text" data-mv-field="url" data-mv-id="${escHtml(v.id)}" value="${escHtml(v.tree_viewer_url || '')}" placeholder="poe.ninja URL" style="font-size:11px;padding:3px 6px">
+      <div style="display:flex;gap:4px">
+        <button data-mv-save="${escHtml(v.id)}" style="background:var(--panel-2);color:var(--text);border:1px solid var(--border);border-radius:3px;padding:3px 6px;font-size:11px;cursor:pointer">Save</button>
+        <button data-mv-delete="${escHtml(v.id)}" ${bvs.length <= 1 ? 'disabled' : ''} style="background:var(--panel-2);color:${bvs.length <= 1 ? 'var(--muted)' : 'var(--red, #c44)'};border:1px solid var(--border);border-radius:3px;padding:3px 6px;font-size:11px;cursor:${bvs.length <= 1 ? 'not-allowed' : 'pointer'}" title="${bvs.length <= 1 ? "Can't delete the last variant" : ''}">×</button>
+      </div>
+    `;
+    rows.appendChild(row);
+  });
+  rows.querySelectorAll('[data-mv-save]').forEach(btn => {
+    btn.addEventListener('click', () => saveVariantRow(btn.dataset.mvSave));
+  });
+  rows.querySelectorAll('[data-mv-delete]').forEach(btn => {
+    btn.addEventListener('click', () => deleteVariantRow(btn.dataset.mvDelete));
+  });
+}
+
+async function saveVariantRow(vid) {
+  const labelEl = document.querySelector(`[data-mv-field="label"][data-mv-id="${CSS.escape(vid)}"]`);
+  const urlEl = document.querySelector(`[data-mv-field="url"][data-mv-id="${CSS.escape(vid)}"]`);
+  const label = labelEl ? labelEl.value.trim() : '';
+  const tree_viewer_url = urlEl ? urlEl.value.trim() : '';
+  try {
+    const r = await fetch(`/v2/api/builds/${state.build.id}/variants/${vid}`, {
+      method: 'PUT', credentials: 'same-origin',
+      headers: {'Content-Type':'application/json'},
+      body: JSON.stringify({label, tree_viewer_url}),
+    });
+    const d = await r.json();
+    if (!r.ok) { $('manage-err').textContent = d.error || ('HTTP ' + r.status); return; }
+    $('manage-err').textContent = '';
+    await loadBuild(state.build.id);
+    renderManageVariants();
+  } catch (e) {
+    $('manage-err').textContent = e.message || String(e);
+  }
+}
+
+async function deleteVariantRow(vid) {
+  if (!confirm(`Delete variant ${vid}? This can't be undone.`)) return;
+  try {
+    const r = await fetch(`/v2/api/builds/${state.build.id}/variants/${vid}`, {
+      method: 'DELETE', credentials: 'same-origin',
+    });
+    const d = await r.json();
+    if (!r.ok) { $('manage-err').textContent = d.error || ('HTTP ' + r.status); return; }
+    $('manage-err').textContent = '';
+    await loadBuild(state.build.id);
+    renderManageVariants();
+  } catch (e) {
+    $('manage-err').textContent = e.message || String(e);
+  }
+}
+window.openManageVariants = openManageVariants;
+window.closeManageVariants = closeManageVariants;
+
 async function refreshVariants() {
   if (!state.build) return;
   const v = await api('/v2/api/builds/' + state.build.id + '/variants');
@@ -1218,11 +1435,44 @@ function renderGearTab(b) {
     el.appendChild(linksBar);
   }
 
-  // Build variant selector: only show when the build was imported with >1 PoB
-  // variants. Switching mutates server state (active_build_variant_id) so the
-  // flat items/tree/skills mirror the chosen variant on subsequent loads.
+  // Build variant selector: switches between BuildVariants. Always render
+  // for non-virtual builds so the user can ADD variants even if they imported
+  // a single-variant PoB. Dropdown is hidden when only one variant exists.
   const bvs = b.build_variants || [];
-  if (!b._virtual && bvs.length > 1) {
+  if (!b._virtual && state.user === 'jbaker' && bvs.length >= 1) {
+    const row = document.createElement('div');
+    row.style.cssText = 'display:flex;align-items:center;gap:8px;margin:6px 0 10px;flex-wrap:wrap';
+    if (bvs.length > 1) {
+      const lbl = document.createElement('label');
+      lbl.style.cssText = 'font-size:12px;color:var(--muted);margin:0';
+      lbl.textContent = 'Variant:';
+      row.appendChild(lbl);
+      const sel = document.createElement('select');
+      sel.style.cssText = 'font-size:12px;padding:3px 6px';
+      bvs.forEach(v => {
+        const opt = document.createElement('option');
+        opt.value = v.id; opt.textContent = v.label || v.id;
+        if (v.id === b.active_build_variant_id) opt.selected = true;
+        sel.appendChild(opt);
+      });
+      sel.addEventListener('change', () => switchActiveVariant(sel.value));
+      row.appendChild(sel);
+    }
+    const addBtn = document.createElement('button');
+    addBtn.textContent = '+ Add variant';
+    addBtn.style.cssText = 'background:var(--panel-2);color:var(--text);border:1px solid var(--border);border-radius:3px;padding:4px 8px;font-size:11px;cursor:pointer';
+    addBtn.onclick = openAddVariant;
+    row.appendChild(addBtn);
+    if (bvs.length > 1) {
+      const mgBtn = document.createElement('button');
+      mgBtn.textContent = 'Manage';
+      mgBtn.style.cssText = 'background:var(--panel-2);color:var(--muted);border:1px solid var(--border);border-radius:3px;padding:4px 8px;font-size:11px;cursor:pointer';
+      mgBtn.onclick = openManageVariants;
+      row.appendChild(mgBtn);
+    }
+    el.appendChild(row);
+  } else if (!b._virtual && bvs.length > 1) {
+    // Non-jbaker users: keep the read-only dropdown so they can SEE variants.
     const row = document.createElement('div');
     row.style.cssText = 'display:flex;align-items:center;gap:8px;margin:6px 0 10px';
     const lbl = document.createElement('label');
