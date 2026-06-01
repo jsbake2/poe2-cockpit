@@ -196,12 +196,6 @@ class State:
     # inclusion in the rare-highlights section. Filter gen looks up the build's
     # item at that slot and emits a BaseType rule for it.
     profit_rare_slots: dict[str, list[str]] = field(default_factory=dict)
-    # Chase-rares: per-league user toggles. Key = ChaseEntry.key (slot|metadata),
-    # value = True means the user explicitly DISABLED the row (drops often, not
-    # actually expensive, etc.). Absent keys are included by default. Survives
-    # snapshot refreshes so re-scraping the maxroll corpus doesn't clobber
-    # user judgement.
-    chase_disabled: dict[str, dict[str, bool]] = field(default_factory=dict)
 
 
 # ---------- (de)serialization ----------
@@ -273,8 +267,6 @@ def _state_from_dict(d: dict) -> State:
     s.profit_filter_source = d.get("profit_filter_source") or "FilterBlade.filter"
     s.profit_filter_dest = d.get("profit_filter_dest") or ""
     s.profit_rare_slots = {k: list(v or []) for k, v in (d.get("profit_rare_slots") or {}).items()}
-    s.chase_disabled = {league: dict(v or {})
-                        for league, v in (d.get("chase_disabled") or {}).items()}
     return s
 
 
@@ -313,7 +305,6 @@ def _state_to_dict(s: State) -> dict:
         "profit_filter_source": s.profit_filter_source,
         "profit_filter_dest": s.profit_filter_dest,
         "profit_rare_slots": {k: list(v) for k, v in s.profit_rare_slots.items()},
-        "chase_disabled": {league: dict(v) for league, v in s.chase_disabled.items()},
     }
 
 
